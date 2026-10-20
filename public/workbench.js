@@ -1,9 +1,10 @@
-/* Workbench client. Renders the inbox, ranks mail with the user's weights and rules, runs agents,
-   and talks to the server for sync, mailbox actions and Claude. Also has a local demo mode. */
+/* Workbench client: sign-in, dashboard, inbox, agents, priorities, activity and accounts.
+   Ranks mail with the user's weights and rules, runs agents, and calls the server for mailbox
+   actions and Claude. Includes a demo mode that runs entirely in the browser. */
 (() => {
 "use strict";
 
-/* ============ icons ============ */
+/* ================= icons ================= */
 const I={
  check:'<path d="M5 12.5l4.2 4.2L19 7"/>',
  letgo:'<path d="M4 7h16v3H4zM6 10v8a1 1 0 001 1h10a1 1 0 001-1v-8M10 14h4"/>',
@@ -12,41 +13,64 @@ const I={
  chev:'<path d="M6 9l6 6 6-6"/>',
  sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
- bell:'<path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15zM10 20a2 2 0 004 0"/>',
  spark:'<path d="M12 3.5l1.8 5 5 1.8-5 1.8-1.8 5-1.8-5-5-1.8 5-1.8zM18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
  plus:'<path d="M12 5v14M5 12h14"/>',
  search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>',
  back:'<path d="M15 5l-7 7 7 7"/>',
  send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
  sync:'<path d="M19 8a7.5 7.5 0 00-13.5-1.5M5 4v3.5h3.5M5 16a7.5 7.5 0 0013.5 1.5M19 20v-3.5h-3.5"/>',
- target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'
+ target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+ grid:'<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+ inbox:'<path d="M4 13l2.5-7h11L20 13v5a1 1 0 01-1 1H5a1 1 0 01-1-1zM4 13h5l1 2h4l1-2h5"/>',
+ bot:'<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16h5"/>',
+ list:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+ user:'<circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5c1-3.6 3.8-5.5 7-5.5s6 1.9 7 5.5"/>',
+ reply:'<path d="M10 8L5 12.5 10 17M5 12.5h9a5 5 0 015 5V19"/>',
+ fwd:'<path d="M14 8l5 4.5-5 4.5M19 12.5h-9a5 5 0 00-5 5V19"/>',
+ pen:'<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
+ info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
+ mail:'<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/>',
+ shield:'<path d="M12 3.5l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9v-5z"/>',
+ eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+ play:'<path d="M8 5.5v13l10-6.5z"/>'
 };
-const ic=(n,c="")=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const ic=(n,c="")=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n]||""}</svg>`;
 const PV={google:{l:"G",c:"#ea4335",n:"Gmail"},microsoft:{l:"O",c:"#0a64d6",n:"Outlook"}};
+const pv=p=>PV[p]||PV.google;
 
-/* ============ state ============ */
+/* ================= model ================= */
 const TYPES=["request","decision","meeting","fyi","notification","newsletter","sales"];
 const TYPE_L={request:"Request",decision:"Decision",meeting:"Meeting",fyi:"FYI",notification:"Notification",newsletter:"Newsletter",sales:"Sales"};
 const LANE={now:"Today",plan:"Plan",delegate:"Delegate",letgo:"Let go"};
-const ACT_L={letgo:"let it go",done:"mark it done",pin:"pin it to Today",reply:"save a draft reply",send:"send a fixed reply",project:"file it",delegate:"forward it"};
+const LANE_C={now:"var(--now)",plan:"var(--plan)",delegate:"var(--del)",letgo:"var(--go)"};
+const ACTIONS=[["letgo","Let it go"],["done","Mark done (archive)"],["pin","Pin to Today"],["reply","Save a draft reply"],["send","Send a reply"],["project","File under a project"],["delegate","Forward to a colleague"]];
+const ACT_L=Object.fromEntries(ACTIONS);
+const ACT_VERB={letgo:"let go",done:"marked done",pin:"pinned",reply:"drafted a reply for",send:"sent a reply to",project:"filed",delegate:"forwarded"};
+const AG_COLORS=["#5e5ce6","#0a84ff","#30b0c7","#34c759","#ff9f0a","#ff375f","#af52de","#ac8e68"];
+const SCOPE_F=[["all","Any email"],["type","The email is a"],["sender","The sender includes"],["project","The project is"],["subject","The subject includes"],["any","The email mentions"]];
+function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);}
+const newAgent=o=>Object.assign({id:"a"+uid(),name:"New agent",on:true,mode:"ask",maxI:null,field:"type",value:"notification",action:"letgo",param:"",instructions:"",context:"",allowed:["letgo","done","pin","reply"],color:AG_COLORS[Math.floor(Math.random()*AG_COLORS.length)],created:new Date().toISOString()},o||{});
 const DEFAULT_AGENTS=()=>[
- {id:"a1",name:"Newsletter tidy",field:"type",value:"newsletter",maxI:null,action:"letgo",param:"",mode:"auto",on:true},
- {id:"a2",name:"Notification tidy",field:"type",value:"notification",maxI:3,action:"letgo",param:"",mode:"auto",on:true},
- {id:"a3",name:"Sales filter",field:"type",value:"sales",maxI:null,action:"letgo",param:"",mode:"auto",on:true},
- {id:"a4",name:"Meeting replies",field:"type",value:"meeting",maxI:null,action:"reply",param:"Hi {first},\n\nThanks for this. Could you send two or three times that work for you this week?\n",mode:"ask",on:true}
+ newAgent({id:"a1",name:"Newsletter tidy",color:"#30b0c7",field:"type",value:"newsletter",action:"letgo",mode:"auto"}),
+ newAgent({id:"a2",name:"Notification tidy",color:"#8e8e93",field:"type",value:"notification",maxI:3,action:"letgo",mode:"auto"}),
+ newAgent({id:"a3",name:"Sales filter",color:"#ff9f0a",field:"type",value:"sales",action:"letgo",mode:"auto"}),
+ newAgent({id:"a4",name:"Meeting assistant",color:"#5e5ce6",field:"type",value:"meeting",action:"reply",mode:"ask",allowed:["reply","pin"],
+  param:"Hi {first},\n\nThanks for this. I could do Tuesday or Thursday afternoon. Would either work?\n",
+  instructions:"For meeting requests, draft a short, friendly reply. Propose two times from my availability in the context. If the request is from my manager, accept their suggested time instead. If there's no clear ask for a meeting, do nothing.",
+  context:"I'm usually free Tuesday and Thursday afternoons (14:00 to 17:00 UK time).\nI prefer 30-minute meetings.\nI don't take meetings on Fridays."})
 ];
 const DEFAULT_SET=()=>({w:{u:40,i:40,e:20},budget:120,about:"",context:"",ctx:[],rules:[],agents:DEFAULT_AGENTS()});
 const S={
- mode:"loading", user:null, accounts:[], emails:[], set:DEFAULT_SET(), log:[], queue:[], ai:{enabled:false,remaining:0},
- view:"home", open:{plan:false,delegate:false,letgo:false,handled:false,ready:true}, showAll:{},
- filter:null, q:"", searching:false, sheet:null, sheetWhy:false, sheetFull:false, drafts:{}, drafting:null, confirmSend:null,
- modal:null, syncing:false, syncNote:"", busy:new Set()
+ mode:"loading",user:null,accounts:[],emails:[],set:DEFAULT_SET(),log:[],queue:[],ai:{enabled:false,remaining:0},
+ route:{view:"dashboard"},sheet:null,sheetFull:false,drafts:{},drafting:null,confirmSend:null,
+ modal:null,syncing:false,syncNote:"",busy:new Set(),ctxBusy:false,
+ box:{folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
+ tests:{},actFilter:"all",authErr:"",authBusy:false
 };
 
-/* ============ utils ============ */
+/* ================= utils ================= */
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const clamp=(v,a=0,b=10)=>Math.max(a,Math.min(b,Number.isFinite(+v)?+v:a));
-const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36);}
 const firstName=f=>(String(f).replace(/<.*>/,"").replace(/["']/g,"").trim().split(/[\s,]+/)[0]||"there");
 const dispName=e=>e.fromName||e.fromEmail||"Unknown";
@@ -55,7 +79,8 @@ const avColor=s=>AVC[parseInt(hash(s||"?"),36)%AVC.length];
 const initials=n=>{const p=String(n).replace(/[^\p{L}\s]/gu,"").trim().split(/\s+/);return ((p[0]||"?")[0]+(p[1]?p[1][0]:"")).toUpperCase();};
 function when(iso){const d=new Date(iso);if(isNaN(d))return "";const now=new Date();const diff=(now-d)/864e5;
  if(d.toDateString()===now.toDateString())return d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
- if(diff<6)return d.toLocaleDateString("en-GB",{weekday:"short"});return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
+ if(diff<6&&diff>=0)return d.toLocaleDateString("en-GB",{weekday:"short"});return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
+const fullDate=iso=>new Date(iso).toLocaleString("en-GB",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 const fmtMin=m=>m>=60?`${Math.floor(m/60)}h${m%60?" "+m%60+"m":""}`:`${m}m`;
 function fridayEnd(){const d=new Date();const add=(5-d.getDay()+7)%7;d.setDate(d.getDate()+add);d.setHours(23,59,0,0);return d.toISOString();}
 const shortDate=iso=>new Date(iso).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
@@ -63,8 +88,12 @@ const isEmail=s=>/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(String(s||"").trim());
 const live=()=>S.mode==="live";
 const byId=id=>S.emails.find(e=>e.id===id);
 const OPEN=e=>e.status==="open";
+const HANDLED=["done","letgo","delegated","sent"];
+const isToday=iso=>new Date(iso).toDateString()===new Date().toDateString();
+const agentById=id=>S.set.agents.find(a=>a.id===id);
+const accById=id=>S.accounts.find(a=>a.id===id);
 
-/* ============ server ============ */
+/* ================= server ================= */
 async function api(path,body,method){
  const r=await fetch(path,{method:method||(body?"POST":"GET"),headers:body?{"content-type":"application/json"}:{},body:body?JSON.stringify(body):undefined,credentials:"same-origin"});
  let j={};try{j=await r.json();}catch(e){}
@@ -75,14 +104,18 @@ function applyState(st){
  S.user=st.user;S.accounts=st.accounts||[];
  const bodies=new Map(S.emails.filter(e=>e.body).map(e=>[e.id,e.body]));
  S.emails=(st.emails||[]).map(e=>Object.assign(e,{body:bodies.get(e.id)||null}));
- const s=st.settings||{};S.set=Object.assign(DEFAULT_SET(),s);if(!Array.isArray(S.set.agents)||!S.set.agents.length)S.set.agents=DEFAULT_AGENTS();
+ const s=st.settings||{};S.set=Object.assign(DEFAULT_SET(),s);
+ if(!Array.isArray(S.set.agents)||!S.set.agents.length)S.set.agents=DEFAULT_AGENTS();
+ S.set.agents=S.set.agents.map(a=>newAgent(a));
  S.log=st.log||[];S.queue=st.queue||[];S.ai=st.ai||{enabled:false,remaining:0};
 }
 function mergeEmails(list){(list||[]).forEach(n=>{const i=S.emails.findIndex(e=>e.id===n.id);if(i>=0)S.emails[i]=Object.assign(S.emails[i],n);else S.emails.push(n);});}
-let setT;function saveSet(){if(!live())return;clearTimeout(setT);setT=setTimeout(()=>api("/api/settings",{settings:S.set},"PUT").catch(()=>toast("Couldn't save your settings. Check your connection.")),600);}
+let setT;const saved={t:0};
+function markSaved(){saved.t=Date.now();const el=document.getElementById("savedmark");if(el)el.textContent="Saved";}
+function saveSet(){if(!live()){markSaved();return;}clearTimeout(setT);setT=setTimeout(()=>api("/api/settings",{settings:S.set},"PUT").then(markSaved).catch(()=>toast("Couldn't save your settings. Check your connection.")),600);}
 function saveQueue(add,remove,clear){if(!live())return;api("/api/queue",{add,remove,clear}).catch(()=>{});}
 
-/* ============ basic scoring (used before Claude scores, and in demo) ============ */
+/* ================= scoring and ranking ================= */
 function basicScore(e){
  const body=e.body||e.snippet||"";const t=(e.subject+" "+body).toLowerCase(),f=(e.fromName+" "+e.fromEmail).toLowerCase();
  let type="fyi";
@@ -90,7 +123,7 @@ function basicScore(e){
  else if(/no-?reply|do not reply|notification|automated|alert@|notifications@|jira|workday|calendar/.test(f+" "+t.slice(0,200))&&!/\?/.test(body.slice(0,400)))type="notification";
  else if(/webinar|exclusive offer|free trial|book a demo|special offer|% off|limited time/.test(t))type="sales";
  else if(/approve|approval|sign-?off|decision|go\/no-go|decide/.test(t))type="decision";
- else if(/invite|meeting|call\b|schedule|available|free for/.test(t))type="meeting";
+ else if(/invite|meeting|call\b|schedule|available|free for|screen on/.test(t))type="meeting";
  else if(/\?|please|could you|can you|would you|need you/.test(t))type="request";
  let U=3,I=4;
  if(/urgent|asap|immediately|today|eod|end of day|right away/.test(t))U+=4;
@@ -103,10 +136,9 @@ function basicScore(e){
  const ask=(sents.find(s=>/\?|please|could you|can you/i.test(s))||"").slice(0,90);
  return {u:clamp(U),i:clamp(I),e:clamp(E),min:Math.max(2,E*5),type,project:"General",summary:(sents.find(s=>s.length>20)||e.subject).slice(0,110),ask:ask||"Nothing",reasons:[TYPE_L[type]]};
 }
-
-/* ============ ranking ============ */
 const activeCtx=()=>(S.set.ctx||[]).filter(r=>!r.expires||new Date(r.expires)>new Date());
 function ruleMatch(r,e){
+ if(r.field==="all")return true;
  const v=String(r.value||"").toLowerCase();if(!v)return false;const a=e.ai||{};
  if(r.field==="sender")return (e.fromName+" "+e.fromEmail).toLowerCase().includes(v);
  if(r.field==="project")return (a.project||"").toLowerCase().includes(v);
@@ -139,16 +171,18 @@ function compute(){
  let used=0;const today=[];
  open.forEach(e=>{if(e.pinned){today.push(e);used+=e._c.a.min||5;if(e._lane==="letgo")e._lane="plan";}});
  open.filter(e=>e._lane==="now"&&!e.pinned).forEach(e=>{const m=e._c.a.min||5;if(used+m<=S.set.budget){used+=m;today.push(e);}else{e._lane="plan";e._over=true;}});
- const lanes={plan:[],delegate:[],letgo:[]};open.forEach(e=>{if(!today.includes(e)&&lanes[e._lane])lanes[e._lane].push(e);});
+ open.forEach(e=>e._today=today.includes(e));
+ const lanes={plan:[],delegate:[],letgo:[]};open.forEach(e=>{if(!e._today&&lanes[e._lane])lanes[e._lane].push(e);});
  const ready=S.emails.filter(e=>e.status==="ready");
- const handled=S.emails.filter(e=>["done","letgo","delegated","sent"].includes(e.status)).sort((a,b)=>(b.handledAt||"").localeCompare(a.handledAt||""));
+ const handled=S.emails.filter(e=>HANDLED.includes(e.status)).sort((a,b)=>(b.handledAt||"").localeCompare(a.handledAt||""));
  return {open,today,used,lanes,ready,handled};
 }
 const projects=()=>[...new Set(S.emails.map(e=>e.ai&&e.ai.project).filter(p=>p&&p!=="General"))];
 const senders=()=>{const m={};S.emails.forEach(e=>{const k=dispName(e);m[k]=(m[k]||0)+1;});return m;};
+const laneOf=e=>OPEN(e)?(e._today?"now":e._lane||"plan"):e.status==="ready"?"ready":"handled";
 
-/* ============ actions ============ */
-const VERB={done:"Done",letgo:"Let go",delegate:"Delegated",pin:"Pinned",reply:"Saved a draft for",send:"Sent a reply to",project:"Filed",reopen:"Reopened"};
+/* ================= actions ================= */
+const VERB={done:"Done",letgo:"Let go",delegate:"Forwarded",pin:"Pinned",reply:"Saved a draft for",send:"Sent a reply to",project:"Filed",reopen:"Moved back to inbox:"};
 const snapL=e=>({id:e.id,status:e.status,pinned:e.pinned,draft:e.draft,delegatedTo:e.delegatedTo,handledAt:e.handledAt,project:e.ai&&e.ai.project});
 function applyLocal(e,a,param){
  const now=new Date().toISOString();const txt=String(param||"").replace(/\{first\}/g,firstName(dispName(e)));
@@ -161,24 +195,26 @@ function applyLocal(e,a,param){
  else if(a==="reopen"){e.status="open";e.delegatedTo="";e.handledAt=null;}
  else if(a==="agentsran")e.agentsRan=true;
 }
-/** Runs an action on the server (live) or locally (demo). Resolves with the log entry, or null. */
-async function act(ids,a,param,actor="You",text){
+/** Runs an action on the server (live) or locally (demo). Resolves with the log entry or null. */
+async function act(ids,a,param,opts={}){
  ids=ids.filter(Boolean);if(!ids.length)return null;
+ const actor=opts.actor||"You";const quiet=a==="agentsran";
  if(!live()){
-  const es=ids.map(byId).filter(Boolean);const before=es.map(snapL);es.forEach(e=>applyLocal(e,a,param));
-  if(a==="agentsran")return null;
+  const es=ids.map(byId).filter(Boolean);const before=es.map(snapL);
+  es.forEach(e=>applyLocal(e,a,opts.params&&opts.params[e.id]!=null?opts.params[e.id]:param));
+  if(quiet)return null;
   const what=es.length===1?`“${es[0].subject}”`:`${es.length} emails`;
-  const en={id:uid(),t:new Date().toISOString(),actor,text:text||`${VERB[a]} ${what}${a==="delegate"?" to "+param:a==="project"?" under "+param:""}`,undoable:a!=="send"&&a!=="delegate",undone:false,_undo:before};
-  S.log.unshift(en);return en;
+  const en={id:uid(),t:new Date().toISOString(),actor,text:opts.text&&a!=="send"&&a!=="delegate"?opts.text:`${VERB[a]} ${what}${a==="delegate"?" to "+param:a==="project"?" under "+param:""}`,undoable:a!=="send"&&a!=="delegate",undone:false,agentId:opts.agentId||null,reason:opts.reason||null,emailIds:es.map(e=>e.id),_undo:before};
+  S.log.unshift(en);if(!opts.noRender)render();return en;
  }
- const quiet=a==="agentsran";if(!quiet){ids.forEach(id=>S.busy.add(id));render();}
+ if(!quiet){ids.forEach(id=>S.busy.add(id));if(!opts.noRender)render();}
  try{
-  const r=await api("/api/actions",{ids,action:a,param,actor,text});
+  const r=await api("/api/actions",{ids,action:a,param,actor,text:opts.text,agentId:opts.agentId,reason:opts.reason,params:opts.params});
   mergeEmails(r.emails);if(r.log)S.log.unshift(r.log);
   if(r.failed&&r.failed.length)toast(r.failed.length===ids.length?r.failed[0].error:`${r.failed.length} couldn't be updated: ${r.failed[0].error}`);
   return r.log;
  }catch(err){toast(err.message);return null;}
- finally{if(!quiet){ids.forEach(id=>S.busy.delete(id));render();}}
+ finally{if(!quiet){ids.forEach(id=>S.busy.delete(id));if(!opts.noRender)render();}}
 }
 async function undo(id){
  const en=S.log.find(l=>l.id===id);if(!en||en.undone)return;
@@ -186,40 +222,75 @@ async function undo(id){
  if(!live()){(en._undo||[]).forEach(s=>{const e=byId(s.id);if(e){Object.assign(e,{status:s.status,pinned:s.pinned,draft:s.draft,delegatedTo:s.delegatedTo,handledAt:s.handledAt});if(e.ai&&s.project)e.ai.project=s.project;}});en.undone=true;toast("Undone");render();return;}
  try{const r=await api("/api/undo",{logId:id});mergeEmails(r.emails);en.undone=true;toast(r.failed&&r.failed.length?"Partly undone: "+r.failed[0]:"Undone");}
  catch(err){toast(err.message);}
- render();if(popKey==="activity")pop.innerHTML=popActivity();
+ render();
 }
 
-/* ============ agents ============ */
+/* ================= agents ================= */
+const isAI=a=>Boolean((a.instructions||"").trim())&&live()&&S.ai.enabled;
 function agentMatches(a,pool){return (pool||S.emails.filter(OPEN)).filter(e=>OPEN(e)&&ruleMatch({field:a.field,value:a.value},e)&&(a.maxI==null||a.maxI===""||score(e).I<=Number(a.maxI)));}
-const autoOK=a=>a.action!=="send"||(a.maxI!=null&&a.maxI!==""&&Number(a.maxI)<=4);
+const sendOK=e=>score(e).I<=4;
+const autoAllowed=(a,d,e)=>a.mode==="auto"&&(d.action!=="send"||sendOK(e));
+function agentSentence(a){
+ const f={all:"any email arrives",sender:"the sender includes",project:"the project is",subject:"the subject includes",type:"the email is a",any:"the email mentions"}[a.field]||"";
+ const val=a.field==="all"?"":a.field==="type"?` <b>${esc((TYPE_L[a.value]||a.value).toLowerCase())}</b>`:` <b>“${esc(a.value)}”</b>`;
+ const lim=a.maxI!=null&&a.maxI!==""?` and importance is ${esc(a.maxI)} or lower`:"";
+ const d=(a.instructions||"").trim()?"Claude follows this agent's instructions to decide what to do":{letgo:"let it go",done:"mark it done",pin:"pin it to Today",reply:"save a draft reply",send:"send a fixed reply",project:`file it under ${esc(a.param)}`,delegate:`forward it to ${esc(a.param)}`}[a.action];
+ return `When ${f}${val}${lim}, ${d}.`;
+}
+const plain=h=>h.replace(/<[^>]+>/g,"");
+/** Decides what an agent would do with each email, without doing it. */
+async function decide(a,emails){
+ if(!emails.length)return [];
+ if(isAI(a)){
+  const out=[];
+  for(let i=0;i<emails.length;i+=12){
+   const chunk=emails.slice(i,i+12);
+   const r=await api("/api/agents/run",{agent:{name:a.name,instructions:a.instructions,context:a.context,allowed:a.allowed},emailIds:chunk.map(e=>e.id)});
+   out.push(...(r.decisions||[]));
+  }
+  return out;
+ }
+ const reason=(a.instructions||"").trim()?"Matched this agent's scope. Claude isn't available here, so the default action is used.":"Matched: "+plain(agentSentence(a));
+ return emails.map(e=>({id:e.id,action:a.action,param:a.param,reason}));
+}
 let agentsRunning=false;
-async function runAgents(emails,manual){
+async function runAgents(emails,{manual=false,only=null}={}){
  if(agentsRunning)return;agentsRunning=true;
+ let autoCount=0,queued=0,lastLog=null;const add=[];
  try{
-  let autoCount=0;const add=[];let last=null;
-  for(const a of S.set.agents){if(!a.on)continue;
+  for(const a of S.set.agents){
+   if(only?a.id!==only:!a.on)continue;
    const ms=agentMatches(a,emails);if(!ms.length)continue;
-   if(a.mode==="auto"&&autoOK(a)){last=await act(ms.map(e=>e.id),a.action,a.param,a.name,`${a.name} · ${ACT_L[a.action]} for ${ms.length} email${ms.length>1?"s":""}`);autoCount+=ms.length;}
-   else ms.forEach(e=>{if(!S.queue.find(q=>q.emailId===e.id&&q.agentId===a.id)){const q={id:uid(),agentId:a.id,emailId:e.id};S.queue.push(q);add.push(q);}});
+   let ds=[];try{ds=await decide(a,ms);}catch(err){toast(`${a.name}: ${err.message}`);continue;}
+   const autoGroup={};
+   for(const d of ds){
+    if(d.action==="none"||!d.action)continue;const e=byId(d.id);if(!e||!OPEN(e))continue;
+    if(autoAllowed(a,d,e)){
+     if(isAI(a)){lastLog=await act([e.id],d.action,d.param,{actor:a.name,agentId:a.id,reason:d.reason,text:`${a.name} ${ACT_VERB[d.action]} “${e.subject}”`,noRender:true});autoCount++;}
+     else (autoGroup[d.action]=autoGroup[d.action]||[]).push(e.id);
+    }else if(!S.queue.find(q=>q.emailId===e.id&&q.agentId===a.id)){const q={id:uid(),agentId:a.id,emailId:e.id,action:d.action,param:d.param,reason:d.reason,t:new Date().toISOString()};S.queue.push(q);add.push(q);queued++;}
+   }
+   for(const [action,ids] of Object.entries(autoGroup)){
+    lastLog=await act(ids,action,a.param,{actor:a.name,agentId:a.id,reason:ds[0]&&ds[0].reason,text:`${a.name} ${ACT_VERB[action]} ${ids.length} email${ids.length>1?"s":""}`,noRender:true});autoCount+=ids.length;
+   }
   }
   const fresh=emails.filter(e=>!e.agentsRan).map(e=>e.id);
-  if(fresh.length)await act(fresh,"agentsran");
+  if(fresh.length&&!only)await act(fresh,"agentsran");
   if(add.length)saveQueue(add);
-  if(manual||autoCount||add.length){const parts=[];if(autoCount)parts.push(`${autoCount} handled by agents`);if(add.length)parts.push(`${add.length} waiting for your approval`);toast(parts.join(" · ")||"No open emails matched",autoCount&&last?last.id:null);}
+  if(manual||autoCount||queued){const p=[];if(autoCount)p.push(`${autoCount} handled by agents`);if(queued)p.push(`${queued} waiting for your approval`);toast(p.join(" · ")||"Nothing matched",autoCount===1&&lastLog&&lastLog.undoable?lastLog.id:null);}
  }finally{agentsRunning=false;render();}
 }
-function agentSentence(a){
- const f={sender:"the sender includes",project:"the project is",subject:"the subject includes",type:"the email is a",any:"the email mentions"}[a.field];
- const val=a.field==="type"?(TYPE_L[a.value]||a.value).toLowerCase():`“${a.value}”`;
- const lim=a.maxI!=null&&a.maxI!==""?` and importance is ${a.maxI} or lower`:"";
- const d={letgo:"let it go",done:"mark it done",pin:"pin it to Today",reply:"save a draft reply",send:"send a fixed reply",project:`file it under ${a.param}`,delegate:`forward it to ${a.param}`}[a.action];
- return `When ${f} <b>${esc(val)}</b>${esc(lim)}, ${esc(d)}.`;
+async function approve(q){
+ const a=agentById(q.agentId);S.queue=S.queue.filter(x=>x.id!==q.id);saveQueue([], [q.id]);
+ if(!a)return;
+ const en=await act([q.emailId],q.action||a.action,q.param!=null?q.param:a.param,{actor:a.name+" (approved)",agentId:a.id,reason:q.reason});
+ if(en)toast(en.text,en.undoable?en.id:null);
 }
 
-/* ============ sync ============ */
+/* ================= sync ================= */
 async function sync(manual){
  if(!live()||S.syncing)return;
- S.syncing=true;S.syncNote="Checking mail";renderBar();
+ S.syncing=true;S.syncNote="Checking mail";renderChrome();
  try{
   for(let round=0;round<8;round++){
    const r=await api("/api/sync",{});
@@ -230,27 +301,28 @@ async function sync(manual){
    S.syncNote=`Sorting · ${r.remaining} left`;render();
   }
   const pending=S.emails.filter(e=>OPEN(e)&&!e.agentsRan&&(e.by==="ai"||!S.ai.enabled));
-  if(pending.length)await runAgents(pending);
- }catch(err){if(err.status===401){S.mode="signedout";}else toast(err.message);}
+  if(pending.length){S.syncNote="Agents working";renderChrome();await runAgents(pending);}
+ }catch(err){if(err.status===401){S.mode="signedout";location.hash="#/login";}else toast(err.message);}
  S.syncing=false;S.syncNote="";render();
 }
 
-/* ============ AI helpers ============ */
+/* ================= AI helpers ================= */
 async function aiDraft(e){
- if(!live()||!S.ai.enabled){toast(live()?"Drafting isn't set up on this server.":"Drafting works once you connect a real inbox.");return;}
- S.drafting=e.id;renderSheet();
+ if(!live()||!S.ai.enabled){S.drafts[e.id]=demoDraft(e);render();toast(live()?"Drafting isn't set up on this server, so here's a starting point.":"Demo draft. Connect a real inbox for Claude's drafts.");return;}
+ S.drafting=e.id;render();
  try{const r=await api("/api/draft",{id:e.id});S.drafts[e.id]=r.text;}catch(err){toast(err.message);}
- S.drafting=null;renderSheet();
+ S.drafting=null;render();
 }
+function demoDraft(e){const a=(e._c||score(e)).a;return `Hi ${firstName(dispName(e))},\n\nThanks for this. ${a.ask&&a.ask!=="Nothing"?"I'll pick this up and come back to you shortly.":"Noted, thank you."}\n\nBest,\n${firstName(S.user&&S.user.name||"Maya")}`;}
 async function contextRules(text){
  if(live()&&S.ai.enabled){try{return (await api("/api/context",{text,projects:projects(),senders:Object.keys(senders()).slice(0,80),expires:fridayEnd()})).rules||[];}catch(err){toast(err.message);}}
  return parseContextBasic(text);
 }
 function parseContextBasic(text){
  const out=[];const ps=projects();const ss=Object.keys(senders());const cap=s=>s[0].toUpperCase()+s.slice(1);
- text.split(/[.\n!;]+/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const l=s.toLowerCase();
-  const cov=l.match(/(\w+) is covering (?:for )?(\w+)/);
-  if(cov){out.push({id:uid(),field:"any",value:cov[2],effect:"delegate",amount:0,to:cap(cov[1]),label:`${cap(cov[2])}'s mail → suggest ${cap(cov[1])}`,expires:fridayEnd()});return;}
+ text.split(/[.\n!;]+(?=\s|$)/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const l=s.toLowerCase();
+  const cov=l.match(/(\w+)(?: \([^)]*\))? is covering (?:for )?(\w+)/);
+  if(cov){const em=(s.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)||[])[0];out.push({id:uid(),field:"any",value:cov[2],effect:"delegate",amount:0,to:em||cap(cov[1]),label:`${cap(cov[2])}'s mail → suggest ${cap(cov[1])}`,expires:fridayEnd()});return;}
   const hitP=ps.filter(p=>l.includes(p.toLowerCase())||p.toLowerCase().split(" ").some(w=>w.length>4&&l.includes(w)));
   const quoted=(s.match(/(?:about|on|the) ([a-z][\w ]{3,24})$/i)||[])[1];
   const targets=hitP.length?hitP.map(p=>({f:"project",v:p})):quoted?[{f:"any",v:quoted.replace(/^the /i,"")}]:[];
@@ -263,435 +335,672 @@ function parseContextBasic(text){
  return out.filter((r,i,arr)=>arr.findIndex(x=>x.label.toLowerCase()===r.label.toLowerCase())===i);
 }
 
-/* ============ demo inbox ============ */
+/* ================= demo ================= */
 function demoInbox(){
- const P={helen:["Helen Marsh","helen.marsh@halden.example"],raj:["Raj Patel","raj.patel@northwind.example"],priya:["Priya Shah","priya.shah@halden.example"],dev:["Dev Okoro","dev.okoro@halden.example"],sam:["Sam Wu","sam.wu@halden.example"],ana:["Ana Lima","ana.lima@halden.example"],lena:["Lena Fischer","lena@talentco.example"],fac:["Facilities Desk","facilities@halden.example"],it:["IT Service Desk","noreply@it.halden.example"],workday:["Workday","notifications@workday.example"],jira:["Jira","jira@halden.example"],carla:["Carla Deane","carla@cloudscale.example"],bright:["Brightdesk","hello@brightdesk.example"],news:["Logistics Weekly","newsletter@logweekly.example"],digest:["Ops Leaders Digest","digest@opsleaders.example"],comms:["Internal Comms","comms@halden.example"],tom:["Tom Reyes","tom.reyes@halden.example"],cal:["Calendar","calendar@halden.example"]};
+ const P={helen:["Helen Marsh","helen.marsh@halden.example"],raj:["Raj Patel","raj.patel@northwind.example"],priya:["Priya Shah","priya.shah@halden.example"],dev:["Dev Okoro","dev.okoro@halden.example"],sam:["Sam Wu","sam.wu@halden.example"],ana:["Ana Lima","ana.lima@halden.example"],lena:["Lena Fischer","lena@talentco.example"],it:["IT Service Desk","noreply@it.halden.example"],workday:["Workday","notifications@workday.example"],jira:["Jira","jira@halden.example"],carla:["Carla Deane","carla@cloudscale.example"],bright:["Brightdesk","hello@brightdesk.example"],news:["Logistics Weekly","newsletter@logweekly.example"],digest:["Ops Leaders Digest","digest@opsleaders.example"],tom:["Tom Reyes","tom.reyes@halden.example"],cal:["Calendar","calendar@halden.example"]};
  const K=[
-  ["helen",95,"Q4 budget: need your sign-off on the headcount line by Thu","Hi Maya,\n\nFinance has revised the headcount line down by one FTE. I need your sign-off by Thursday so it goes into the board pack. If you disagree, tell me why and I'll take it to the CFO.\n\nHelen"],
-  ["raj",300,"Audit evidence pack: two items still missing","Maya,\n\nWe're still missing the access-review log for September and the signed change approvals for release 4.2. Our auditors start fieldwork on Monday, so we need both before then.\n\nRaj"],
-  ["dev",140,"Budget variance query: travel line is 18% over","Hi Maya,\n\nTravel is running 18% over plan, mostly the Northwind site visits. Can you confirm whether that's expected to continue into November?\n\nDev"],
-  ["sam",60,"Migration cutover: go/no-go on Friday?","Maya,\n\nLoad tests passed at 1.4x peak. Two open defects are cosmetic. I'm recommending go for Friday 22:00, but it's your call as programme owner. Can you decide by Thursday end of day?\n\nSam"],
-  ["priya",200,"Covering Tom's vendor renewals: which ones first?","Hi Maya,\n\nI've got Tom's renewal list. Three expire before he's back. Which should I prioritise?\n\nPriya"],
-  ["helen",400,"Board pack: one slide on migration risks","Maya,\n\nCould you draft one slide on the top three migration risks for the board pack? Due next Tuesday.\n\nHelen"],
-  ["dev",1300,"Reminder: Q4 forecast locks 31 Oct","All,\n\nForecasts lock on 31 October. Please update your programme lines before then.\n\nDev"],
-  ["ana",2900,"Interview feedback overdue: two candidates","Hi Maya,\n\nWe're still waiting on your feedback for the two data analyst candidates. Both have competing offers, so please submit today if you can.\n\nAna"],
-  ["lena",180,"Can you do a 30-minute screen on Wednesday?","Hi Maya,\n\nWe have a strong candidate for the analyst role. Are you free for a 30-minute screen on Wednesday afternoon?\n\nLena"],
-  ["helen",50,"Can you cover Tuesday's ops review?","Maya, I'm at the board offsite. Could you chair the ops review on Tuesday?\n\nHelen"],
-  ["sam",500,"Need a decision: keep the legacy API three more months?","Maya,\n\nTwo internal teams haven't moved off the legacy API. Keeping it costs about £9k a month. Do we extend to January or force the move? I need a decision this week.\n\nSam"],
-  ["ana",350,"Offer approval needed: data analyst role","Hi Maya,\n\nThe offer for Jordan is ready and within band. Please approve in Workday so we can send it today.\n\nAna"],
-  ["raj",1600,"Phase 2 kick-off date?","Maya,\n\nOnce the audit is done we'd like to start phase 2. Could you suggest a kick-off date in November?\n\nRaj"],
-  ["priya",900,"Draft risk register for your review","Hi Maya,\n\nAttached is the draft risk register. It feeds into Helen's board slide, so comments by Monday would be ideal.\n\nPriya"],
-  ["sam",700,"Load test results (FYI)","Results attached. All targets met at 1.4x peak. No action needed.\n\nSam"],
-  ["raj",1500,"Thanks for the call, notes attached","Notes from Monday attached. No actions for you.\n\nRaj"],
-  ["bright",600,"Renewal quote for Tom: expires 28 Oct","Hi Tom,\n\nYour Brightdesk renewal quote expires 28 October. Let us know if you'd like to proceed.\n\nBrightdesk"],
-  ["carla",1100,"CloudScale contract question (Tom's account)","Hi, Tom mentioned a possible seat increase. Is that still the plan?\n\nCarla"],
-  ["workday",240,"Approve timesheet: Priya Shah","A timesheet is awaiting your approval. This is an automated notification."],
-  ["it",800,"Your password expires in 3 days","Change your password before it expires to avoid losing access. Do not reply to this automated message."],
-  ["fac",450,"Office move: choose your desk zone","Please choose a desk zone for the new floor by Friday."],
-  ["tom",2000,"Out of office until 3 November","I'm on leave until 3 November. Priya Shah is covering. This is an automated reply."],
-  ["carla",3000,"Quick question about your cloud spend","Hi Maya, would you be open to a 15-minute call about optimising your cloud spend? Book a demo here. Unsubscribe."]
+  ["helen",95,"Q4 budget: need your sign-off on the headcount line by Thu","Hi Maya,\n\nFinance has revised the headcount line down by one FTE. I need your sign-off by Thursday so it goes into the board pack. If you disagree, tell me why and I'll take it to the CFO.\n\nHelen","g"],
+  ["raj",300,"Audit evidence pack: two items still missing","Maya,\n\nWe're still missing the access-review log for September and the signed change approvals for release 4.2. Our auditors start fieldwork on Monday, so we need both before then.\n\nRaj","o"],
+  ["dev",140,"Budget variance query: travel line is 18% over","Hi Maya,\n\nTravel is running 18% over plan, mostly the Northwind site visits. Can you confirm whether that's expected to continue into November?\n\nDev","g"],
+  ["sam",60,"Migration cutover: go/no-go on Friday?","Maya,\n\nLoad tests passed at 1.4x peak. Two open defects are cosmetic. I'm recommending go for Friday 22:00, but it's your call as programme owner. Can you decide by Thursday end of day?\n\nSam","g"],
+  ["priya",200,"Covering Tom's vendor renewals: which ones first?","Hi Maya,\n\nI've got Tom's renewal list. Three expire before he's back. Which should I prioritise?\n\nPriya","g"],
+  ["helen",400,"Board pack: one slide on migration risks","Maya,\n\nCould you draft one slide on the top three migration risks for the board pack? Due next Tuesday.\n\nHelen","g"],
+  ["dev",1300,"Reminder: Q4 forecast locks 31 Oct","All,\n\nForecasts lock on 31 October. Please update your programme lines before then.\n\nDev","g"],
+  ["ana",2900,"Interview feedback overdue: two candidates","Hi Maya,\n\nWe're still waiting on your feedback for the two data analyst candidates. Both have competing offers, so please submit today if you can.\n\nAna","g"],
+  ["lena",180,"Can you do a 30-minute screen on Wednesday?","Hi Maya,\n\nWe have a strong candidate for the analyst role. Are you free for a 30-minute meeting on Wednesday afternoon?\n\nLena","o"],
+  ["helen",50,"Can you cover Tuesday's ops review?","Maya, I'm at the board offsite. Could you chair the ops review on Tuesday?\n\nHelen","g"],
+  ["sam",500,"Need a decision: keep the legacy API three more months?","Maya,\n\nTwo internal teams haven't moved off the legacy API. Keeping it costs about £9k a month. Do we extend to January or force the move? I need a decision this week.\n\nSam","g"],
+  ["ana",350,"Offer approval needed: data analyst role","Hi Maya,\n\nThe offer for Jordan is ready and within band. Please approve in Workday so we can send it today.\n\nAna","g"],
+  ["raj",1600,"Phase 2 kick-off date?","Maya,\n\nOnce the audit is done we'd like to start phase 2. Could you suggest a kick-off date in November?\n\nRaj","o"],
+  ["priya",900,"Draft risk register for your review","Hi Maya,\n\nAttached is the draft risk register. It feeds into Helen's board slide, so comments by Monday would be ideal.\n\nPriya","g"],
+  ["sam",700,"Load test results (FYI)","Results attached. All targets met at 1.4x peak. No action needed.\n\nSam","g"],
+  ["bright",600,"Renewal quote for Tom: expires 28 Oct","Hi Tom,\n\nYour Brightdesk renewal quote expires 28 October. Let us know if you'd like to proceed.\n\nBrightdesk","o"],
+  ["carla",1100,"CloudScale contract question (Tom's account)","Hi, Tom mentioned a possible seat increase. Is that still the plan?\n\nCarla","o"],
+  ["workday",240,"Approve timesheet: Priya Shah","A timesheet is awaiting your approval. This is an automated notification.","g"],
+  ["it",800,"Your password expires in 3 days","Change your password before it expires to avoid losing access. Do not reply to this automated message.","g"],
+  ["tom",2000,"Out of office until 3 November","I'm on leave until 3 November. Priya Shah is covering. This is an automated reply.","g"],
+  ["carla",3000,"Quick question about your cloud spend","Hi Maya, would you be open to a 15-minute call about optimising your cloud spend? Book a demo here. Unsubscribe.","o"]
  ];
  const nl=["Port congestion eases in Q4","Five metrics every ops lead should track","Rail freight volumes up 6%","Inside the warehouse automation boom","Why last-mile costs keep rising"];
- for(let i=0;i<8;i++)K.push([i%2?"news":"digest",120+i*290,(i%2?"Logistics Weekly: ":"Digest: ")+nl[i%nl.length],"This week's edition is here. View in browser for the full stories. Unsubscribe at any time."]);
- for(let i=0;i<8;i++)K.push(["jira",70+i*150,`MIG-${210+i}: status changed to ${["In review","Done","Blocked","In progress"][i%4]}`,"An issue you watch was updated. This is an automated notification."]);
- for(let i=0;i<5;i++)K.push([i%2?"bright":"carla",400+i*500,["Webinar: modern service desks","Your exclusive Q4 offer","Customer story: 40% faster triage","Book your free assessment","Limited time: 20% off"][i],"Hi Maya, I wanted to share an exclusive offer that might help your team. Book a demo or unsubscribe here."]);
- for(let i=0;i<4;i++)K.push(["cal",90+i*240,`Accepted: ${["Ops review","Migration stand-up","Budget sync","1:1 Priya"][i]}`,"This is an automated calendar notification."]);
- return K.map(([p,ago,subj,body],i)=>({id:"d"+i,accountId:"demo",provider:"google",fromName:P[p][0],fromEmail:P[p][1],to:"",subject:subj,snippet:body.slice(0,140),body,date:new Date(Date.now()-ago*60000).toISOString(),status:"open",pinned:false,ai:null,by:"basic",draft:"",delegatedTo:"",agentsRan:false,handledAt:null}));
+ for(let i=0;i<6;i++)K.push([i%2?"news":"digest",120+i*290,(i%2?"Logistics Weekly: ":"Digest: ")+nl[i%nl.length],"This week's edition is here. View in browser for the full stories. Unsubscribe at any time.","g"]);
+ for(let i=0;i<6;i++)K.push(["jira",70+i*150,`MIG-${210+i}: status changed to ${["In review","Done","Blocked","In progress"][i%4]}`,"An issue you watch was updated. This is an automated notification.","g"]);
+ for(let i=0;i<4;i++)K.push([i%2?"bright":"carla",400+i*500,["Webinar: modern service desks","Your exclusive Q4 offer","Customer story: 40% faster triage","Limited time: 20% off"][i],"Hi Maya, I wanted to share an exclusive offer that might help your team. Book a demo or unsubscribe here.","o"]);
+ for(let i=0;i<3;i++)K.push(["cal",90+i*240,`Accepted: ${["Ops review","Migration stand-up","Budget sync"][i]}`,"This is an automated calendar notification.","g"]);
+ return K.map(([p,ago,subj,body,acc],i)=>({id:"d"+i,accountId:acc==="o"?"demo-o":"demo-g",provider:acc==="o"?"microsoft":"google",fromName:P[p][0],fromEmail:P[p][1],to:acc==="o"?"maya.okafor@halden-group.example":"maya@halden.example",subject:subj,snippet:body.slice(0,140),body,date:new Date(Date.now()-ago*60000).toISOString(),status:"open",pinned:false,ai:null,by:"basic",draft:"",delegatedTo:"",agentsRan:false,handledAt:null}));
 }
 async function startDemo(){
- S.mode="demo";S.user={email:"maya@halden.example"};S.accounts=[{id:"demo",provider:"google",email:"maya@halden.example"}];
+ S.mode="demo";S.user={email:"maya@halden.example",name:"Maya Okafor"};
+ S.accounts=[{id:"demo-g",provider:"google",email:"maya@halden.example",lastSync:new Date().toISOString()},{id:"demo-o",provider:"microsoft",email:"maya.okafor@halden-group.example",lastSync:new Date().toISOString()}];
  S.set=DEFAULT_SET();
  S.set.about="I'm Maya Okafor, Programme Manager at Halden Freight. My manager is Helen Marsh. Raj Patel at Northwind is our key client.";
- S.set.context="This week I'm focused on the Q4 budget. Priya is covering for Tom while he's on leave. Ignore anything about the office move.";
+ S.set.context="This week I'm focused on the Q4 budget. Priya (priya.shah@halden.example) is covering for Tom while he's on leave. Ignore anything about the office move.";
  S.set.ctx=[{id:uid(),field:"subject",value:"budget",effect:"imp",amount:2,label:"Q4 budget: importance +2",expires:fridayEnd()},{id:uid(),field:"any",value:"tom",effect:"delegate",amount:0,to:"priya.shah@halden.example",label:"Tom's mail → suggest Priya",expires:fridayEnd()},{id:uid(),field:"subject",value:"office move",effect:"cap",amount:1,label:"Office move: importance capped at 1",expires:fridayEnd()}];
  S.emails=demoInbox();S.log=[];S.queue=[];S.ai={enabled:false,remaining:0};
- render();await runAgents(S.emails.filter(OPEN));
+ go("dashboard");await runAgents(S.emails.filter(OPEN));
 }
 
-/* ============ rendering ============ */
-function renderBar(){
- const b=document.getElementById("bar");
- if(S.mode==="signedout"||S.mode==="loading"){b.innerHTML=`<div class="logo"><span class="mark">W</span>Workbench</div>`;return;}
- const nq=S.queue.filter(q=>{const e=byId(q.emailId);return e&&OPEN(e);}).length;const acc=S.accounts[0];
- b.innerHTML=`<div class="logo"><span class="mark">W</span>Workbench</div>
-  ${S.syncing?`<span class="status" role="status"><span class="spin"></span><span>${esc(S.syncNote)}</span></span>`:""}
-  ${S.view==="home"?`<button class="ib" data-a="search" aria-label="Search" title="Search">${ic("search")}</button>`:""}
-  <button class="ib" data-a="queue" aria-label="Agent suggestions" title="Agent suggestions">${ic("bell")}${nq?`<span class="dot num">${nq}</span>`:""}</button>
-  <button class="ib" data-a="activity" aria-label="Activity" title="Activity and undo">${ic("clock")}</button>
-  <button class="ib" data-a="prefs" aria-label="Priorities" title="Priorities">${ic("sliders")}</button>
-  <button class="ib" data-a="agents" aria-label="Agents" title="Agents">${ic("spark")}</button>
-  <button class="ib" data-a="account" aria-label="Accounts" title="${esc(acc?acc.email:"Accounts")}"><span class="av" style="width:28px;height:28px;font-size:11px;background:${avColor(S.user&&S.user.email)}">${esc(initials((S.user&&S.user.email||"?").split("@")[0].replace(/[._]/g," ")))}</span></button>`;
+/* ================= routing ================= */
+function parseRoute(){const h=location.hash.replace(/^#\/?/,"").split("/");return {view:h[0]||"dashboard",id:h[1]?decodeURIComponent(h[1]):null,tab:h[2]||null};}
+function go(view,id,tab){const h="#/"+[view,id&&encodeURIComponent(id),tab].filter(Boolean).join("/");if(location.hash!==h)location.hash=h;else{S.route=parseRoute();render();}}
+window.addEventListener("hashchange",()=>{S.route=parseRoute();S.authErr="";closePop();S.sheet=null;render();if(S.route.view!=="inbox")window.scrollTo(0,0);});
+
+/* ================= rendering: shared ================= */
+const app=()=>document.getElementById("app");
+function render(){
+ if(S.mode==="loading"){app().innerHTML=`<div class="auth"><div class="brand"><div class="logo"><span class="mark">W</span>Workbench</div></div><div class="side"><span class="spin"></span></div></div>`;return;}
+ if(S.mode==="signedout"){const k=captureFocus();app().innerHTML=authHTML();restoreFocus(k);renderOverlays();return;}
+ const r=S.route;
+ const views={dashboard:vDashboard,inbox:vInbox,agents:vAgents,priorities:vPriorities,activity:vActivity,accounts:vAccounts,connect:vConnect};
+ const v=views[r.view]?r.view:"dashboard";
+ const keep=captureFocus();
+ const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;
+ app().innerHTML=`<div class="shell">${navHTML(v)}<div class="content">${views[v]()}</div></div>`;
+ const lb2=document.querySelector(".mail .lb");if(lb2)lb2.scrollTop=lbTop;
+ restoreFocus(keep);afterRender(v);renderOverlays();
 }
-function rowHTML(e,opt={}){
- const c=e._c||score(e),a=c.a,lane=e._lane||"plan",name=dispName(e);const handled=opt.handled;const busy=S.busy.has(e.id);
- return `<div class="row" data-a="open" data-id="${e.id}" tabindex="0"${busy?' style="opacity:.55"':""}>
-  <div class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</div>
-  <div class="tx"><div class="l1"><span class="who" data-a="sender" data-v="${esc(name)}" data-tip="sender:${esc(name)}">${esc(name)}</span>${e.pinned?`<span class="pin" title="Pinned">${ic("pin")}</span>`:""}<span class="when">${when(e.date)}</span></div>
-   <div class="sub">${esc(e.subject)}</div>
-   <div class="sum">${handled?esc(handledLabel(e)):`${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button> `:""}${esc(a.ask&&a.ask!=="Nothing"?a.ask:a.summary||e.snippet||"")}`}</div></div>
-  <div class="rt">
-   <div class="qa">${handled?(e.status==="sent"||e.status==="delegated"?"":`<button data-a="reopen" data-id="${e.id}" aria-label="Move back to inbox" title="Move back to inbox">${ic("back")}</button>`):e.status==="ready"?`<button data-a="open" data-id="${e.id}" aria-label="Review and send" title="Review and send">${ic("send")}</button>`:`<button data-a="q-done" data-id="${e.id}" aria-label="Done" title="Done (archives it)">${ic("check")}</button><button data-a="q-letgo" data-id="${e.id}" aria-label="Let go" title="Let go (archives with a label)">${ic("letgo")}</button><button data-a="q-pin" data-id="${e.id}" aria-label="${e.pinned?"Unpin":"Pin to Today"}" title="${e.pinned?"Unpin":"Pin to Today"}">${ic("pin")}</button>`}</div>
-   ${handled||e.status==="ready"?"":`<span class="score ${lane} num" data-tip="score:${e.id}">${e.by==="ai"||!live()||!S.ai.enabled?c.s.toFixed(1):"·"}</span>`}
-  </div></div>`;
+function renderChrome(){const el=document.getElementById("topstatus");if(el)el.innerHTML=statusHTML();}
+const statusHTML=()=>S.syncing?`<span class="status" role="status"><span class="spin"></span>${esc(S.syncNote)}</span>`:"";
+function captureFocus(){const a=document.activeElement;if(!a||!a.id)return null;return {id:a.id,s:a.selectionStart,e:a.selectionEnd};}
+function restoreFocus(k){if(!k)return;const el=document.getElementById(k.id);if(el&&document.activeElement!==el){el.focus();try{if(k.s!=null)el.setSelectionRange(k.s,k.e);}catch(e){}}}
+function navHTML(v){
+ const st=compute();const nq=queueItems().length;
+ const item=(k,icon,t,ct,hot)=>`<a class="nv" href="#/${k}" ${v===k?'aria-current="page"':""} title="${t}">${ic(icon)}<span class="t">${t}</span>${ct?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a>`;
+ return `<nav class="nav" aria-label="Main">
+  <div class="logo"><span class="mark">W</span><span class="w">Workbench</span></div>
+  ${item("dashboard","grid","Dashboard",st.today.length||"")}
+  ${item("inbox","inbox","Inbox",st.open.length+st.ready.length||"")}
+  ${item("agents","bot","Agents",nq||"",nq>0)}
+  <div class="sep"></div>
+  ${item("priorities","sliders","Priorities")}
+  ${item("activity","list","Activity")}
+  ${item("accounts","user","Accounts")}
+  <div class="bottom">
+   <div class="lbl2 mbs">Mailboxes</div>
+   ${S.accounts.map(a=>`<a class="mb mbs" href="#/accounts" data-tip="acct:${a.id}"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><span class="e">${esc(a.email)}</span><span class="sdot${a.error?" err":""}"></span></a>`).join("")}
+   ${S.accounts.length?"":`<a class="mb mbs" href="#/connect">${ic("plus")}<span class="e">Connect email</span></a>`}
+   ${S.mode==="demo"?`<button class="mb" data-a="exitdemo" title="Leave the demo">${ic("back")}<span class="e mbs">Exit demo</span></button>`:""}
+  </div></nav>`;
+}
+function topHTML(title,actions=""){
+ return `<header class="top"><div class="top-in"><h1>${title}</h1><span id="topstatus">${statusHTML()}</span>${actions}
+  ${live()?`<button class="ib" data-a="sync" aria-label="Check mail" title="Check mail" ${S.syncing?"disabled":""}>${ic("sync")}</button>`:""}
+  <button class="btn pri sm" data-a="compose">${ic("pen")}<span>Compose</span></button></div></header>`;
+}
+function bannersHTML(){
+ const b=[];
+ if(S.mode==="demo")b.push(`<div class="banner">${ic("info")}Demo with a sample inbox. Actions stay in this browser and nothing is sent.<button class="btn link sm sp" data-a="exitdemo">Create an account</button></div>`);
+ S.accounts.filter(a=>a.error).forEach(a=>b.push(`<div class="banner warn">${esc(a.email)} needs reconnecting.<a class="btn link sm sp" href="/api/auth/${a.provider}/start?hint=${encodeURIComponent(a.email)}">Reconnect</a></div>`));
+ return b.join("");
 }
 const handledLabel=e=>({done:"Done",letgo:"Let go",delegated:"Forwarded to "+e.delegatedTo,sent:"Reply sent"}[e.status]||"");
-function section(key,title,list,{color,action,blurb}={}){
- if(!list.length)return "";
- const open=S.open[key];const lim=S.showAll[key]?list.length:6;
- return `<section class="sec"><div class="sec-h"><button class="tog" data-a="toggle" data-v="${key}" aria-expanded="${open}">${ic("chev")}<span class="t">${color?`<span class="ldot" style="background:${color}"></span>`:""}${title} <span class="num faint">${list.length}</span></span></button>${blurb?`<span class="note" style="margin-left:4px">${blurb}</span>`:""}<span class="sp">${action||""}</span></div>
-  ${open?`<div class="card">${list.slice(0,lim).map(e=>rowHTML(e,{handled:key==="handled"})).join("")}${list.length>lim?`<button class="more" data-a="showall" data-v="${key}">Show all ${list.length}</button>`:""}</div>`:""}</section>`;
+const emptyHTML=t=>`<div class="empty">${t}</div>`;
+function rowHTML(e,opt={}){
+ const c=e._c||score(e),a=c.a,name=dispName(e),lane=laneOf(e);const busy=S.busy.has(e.id);const handled=HANDLED.includes(e.status);
+ const acts=handled?(e.status==="sent"||e.status==="delegated"?"":`<button data-a="reopen" data-id="${e.id}" aria-label="Move back to inbox" title="Move back to inbox">${ic("back")}</button>`)
+  :e.status==="ready"?`<button data-a="openmail" data-v="reply" data-id="${e.id}" aria-label="Review and send" title="Review and send">${ic("send")}</button>`
+  :`<button data-a="q-done" data-id="${e.id}" aria-label="Done" title="Done (archives it)">${ic("check")}</button><button data-a="q-letgo" data-id="${e.id}" aria-label="Let go" title="Let go (archives with a label)">${ic("letgo")}</button><button data-a="q-pin" data-id="${e.id}" aria-label="${e.pinned?"Unpin":"Pin to Today"}" title="${e.pinned?"Unpin":"Pin to Today"}">${ic("pin")}</button>`;
+ const sub=handled?esc(handledLabel(e)):`${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span style="overflow:hidden;text-overflow:ellipsis">${esc(a.ask&&a.ask!=="Nothing"?a.ask:a.summary||e.snippet||"")}</span>`;
+ const badge=handled?"":e.status==="ready"?`<span class="pill p-ready" data-tip="A reply draft is saved in your mailbox">Draft</span>`:`<span class="score ${lane} num" data-tip="score:${e.id}">${e.by==="ai"||!live()||!S.ai.enabled?c.s.toFixed(1):"·"}</span>`;
+ return `<div class="row${busy?" busy":""}${opt.sel?" sel":""}" data-a="${opt.mail?"selmail":"open"}" data-id="${e.id}" tabindex="0">
+  <div class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</div>
+  <div class="tx"><div class="l1"><span class="who" data-a="sender" data-v="${esc(name)}" data-tip="sender:${esc(name)}">${esc(name)}</span>${e.pinned?`<span class="pin" title="Pinned">${ic("pin")}</span>`:""}<span class="when" data-tip="${esc(fullDate(e.date))}">${when(e.date)}</span></div>
+   <div class="sub">${esc(e.subject)}</div><div class="sum">${sub}</div></div>
+  <div class="rt"><div class="qa">${acts}</div>${badge}</div></div>`;
 }
-function landingHTML(){
- const p=new URLSearchParams(location.search);const err=p.get("error");
- const msg={not_configured:`Sign-in with ${p.get("provider")==="microsoft"?"Microsoft":"Google"} isn't set up on this server yet.`,access_denied:"You cancelled the sign-in, so nothing was connected.",state_mismatch:"That sign-in expired. Please try again.",connect_failed:"Workbench couldn't connect that account. Please try again.",no_email:"That account didn't share an email address."}[err];
- return `<div class="land">
-  ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
-  <h1>Your inbox,<br>tackled strategically.</h1>
-  <p>Connect Gmail or Outlook. Workbench scores every email for urgency, importance and effort, lets agents handle the routine mail, and shows you only what deserves you today.</p>
-  <div class="cta">
-   <a href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c}">G</span>Continue with Google</a>
-   <a href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c}">O</span>Continue with Microsoft</a>
-   <button data-a="demo">Try the demo inbox</button>
+
+/* ================= auth & onboarding ================= */
+function authHTML(){
+ const signup=S.route.view==="signup";
+ const p=new URLSearchParams(location.search);
+ const err=S.authErr||({not_configured:`Sign-in with ${p.get("provider")==="microsoft"?"Microsoft":"Google"} isn't set up on this server yet.`,access_denied:"You cancelled the sign-in.",state_mismatch:"That sign-in expired. Please try again.",connect_failed:"Workbench couldn't connect that account. Please try again.",no_email:"That account didn't share an email address.",already_linked:"That mailbox is already connected to a different Workbench account."}[p.get("error")]||"");
+ return `<div class="auth">
+  <section class="brand"><div class="logo"><span class="mark">W</span>Workbench</div>
+   <div style="display:flex;flex-direction:column;gap:18px"><h1>Tackle email strategically.</h1><p>Connect every inbox you use. Workbench scores each email for urgency, importance and effort, lets your agents handle the routine, and shows you only what deserves you today.</p></div>
+   <div class="pts"><div>${ic("target")}<span>A Today list sized to the time you actually have.</span></div><div>${ic("bot")}<span>Agents you instruct in plain language, with approval before they act.</span></div><div>${ic("shield")}<span>Nothing is sent or deleted without your say-so. Every action can be reviewed.</span></div></div>
+  </section>
+  <section class="side"><form class="authcard" id="authform" novalidate>
+   <div><h2>${signup?"Create your account":"Sign in"}</h2><p class="muted" style="margin-top:6px">${signup?"Then connect Gmail or Outlook. You can add several mailboxes.":"Welcome back."}</p></div>
+   <a class="oauth" href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c}">G</span>Continue with Google</a>
+   <a class="oauth" href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c}">O</span>Continue with Microsoft</a>
+   <div class="or">or with email</div>
+   ${signup?`<div class="fld"><label class="lbl" for="au-name">Name</label><input class="in" id="au-name" autocomplete="name" placeholder="Maya Okafor"></div>`:""}
+   <div class="fld"><label class="lbl" for="au-email">Email</label><input class="in" id="au-email" type="email" autocomplete="email" placeholder="you@company.com"></div>
+   <div class="fld"><label class="lbl" for="au-pw">Password</label><input class="in" id="au-pw" type="password" autocomplete="${signup?"new-password":"current-password"}" placeholder="${signup?"At least 10 characters":""}"></div>
+   ${err?`<p class="err" role="alert">${esc(err)}</p>`:""}
+   <button class="btn pri lg" type="submit" ${S.authBusy?"disabled":""}>${S.authBusy?"Please wait…":signup?"Create account":"Sign in"}</button>
+   <p class="note" style="text-align:center">${signup?`Already have an account? <a href="#/login">Sign in</a>`:`New to Workbench? <a href="#/signup">Create an account</a>`}</p>
+   <div class="or">or</div>
+   <button class="btn lg" type="button" data-a="demo">${ic("play")}Try the demo inbox</button>
+   <p class="fine">Workbench reads your recent inbox to sort it and only sends when you, or an agent you allowed, say so. <a href="/privacy">Privacy</a></p>
+  </form></section></div>`;
+}
+function vConnect(){
+ return topHTML("Connect your email")+`<div class="page"><div class="onb">
+  <div><h2 class="hero">Connect the inboxes you want Workbench to sort.</h2><p class="muted" style="margin-top:8px;max-width:60ch">Add as many as you like. Workbench reads the last two weeks of each inbox, and can archive, label, draft and send on your instruction.</p></div>
+  <div class="prov">
+   <a class="provc" href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c}">G</span><b>Gmail</b><span class="note">Google Workspace or personal Gmail</span></a>
+   <a class="provc" href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c}">O</span><b>Outlook</b><span class="note">Microsoft 365, Outlook.com or Hotmail</span></a>
+   <div class="provc dis" data-tip="Yahoo needs an app password over IMAP, which isn't supported yet. You can forward Yahoo mail to a connected Gmail address."><span class="pv" style="background:#6001d2">Y</span><b>Yahoo</b><span class="note">Coming later</span></div>
   </div>
-  <p class="fine">Workbench reads your recent inbox to sort it, and archives, labels, drafts or sends only when you ask, or when an agent you set up is allowed to. You can disconnect and delete your data at any time. <a href="/privacy">Privacy</a></p>
+  ${S.accounts.length?`<div class="card"><div class="card-h"><h3>Connected</h3></div><div class="card-b">${S.accounts.map(a=>`<div style="display:flex;gap:10px;align-items:center"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span>${esc(a.email)}</div>`).join("")}</div></div>`:""}
+  <div><a class="btn" href="#/dashboard">${S.accounts.length?"Go to dashboard":"Skip for now"}</a></div>
+ </div></div>`;
+}
+
+/* ================= dashboard ================= */
+function vDashboard(){
+ const st=compute();const n=st.today.length;
+ const dec=st.open.filter(e=>e._c.a.type==="decision"&&e._lane!=="letgo");
+ const q=queueItems();
+ const agentToday=S.log.filter(l=>l.agentId&&isToday(l.t)&&!l.undone);
+ const agentCount=agentToday.reduce((s,l)=>s+((l.emailIds||[]).length||1),0);
+ const ctx=activeCtx();
+ const name=S.user&&S.user.name?firstName(S.user.name):"";
+ const hour=new Date().getHours();const greet=hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";
+ const hero=!S.emails.length&&live()?"Let's get your mail in.":n?`<em class="num">${n}</em> email${n>1?"s":""} need${n>1?"":"s"} you today.`:st.open.length?"You're clear for today.":"Everything's handled.";
+ const tipList=list=>"list:"+list.slice(0,5).map(e=>e.id).join(",");
+ const stat=(label,num,sub,tipk,a,v)=>`<button class="stat" data-a="${a}" ${v?`data-v="${v}"`:""} data-tip="${esc(tipk)}"><span class="k">${label}</span><span class="n">${num}</span><span class="s">${esc(sub)}</span></button>`;
+ const feed=S.log.filter(l=>l.agentId).slice(0,7);
+ const lane=(k,title,list,blurb)=>`<button class="card lane" data-a="lane" data-v="${k}" data-tip="${list.length?tipList(list):"Nothing here"}"><span class="h"><span class="ldot" style="background:${LANE_C[k]}"></span>${title}<span class="n">${list.length}</span></span><span class="mini">${esc(list[0]?list[0].subject:"Nothing here")}</span><span class="note">${blurb}</span></button>`;
+ return topHTML(`${greet}${name?", "+esc(name):""}`)+`<div class="page">${bannersHTML()}
+  ${live()&&!S.accounts.length?`<div class="card"><div class="card-b" style="padding:20px"><h3>Connect an inbox to get started</h3><p class="muted">Workbench needs at least one mailbox to sort.</p><div><a class="btn pri" href="#/connect">${ic("plus")}Connect email</a></div></div></div>`:""}
+  <div><div class="date">${new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div><h2 class="hero" style="margin-top:4px">${hero}</h2>
+   <div class="chips" style="margin-top:12px">
+    <button class="chip" data-a="budget" data-tip="About ${fmtMin(st.used)} planned of ${fmtMin(S.set.budget)}. Today only holds what fits; urgent mail that doesn't fit moves to Plan.">${ic("clock")}<span class="num">${fmtMin(S.set.budget)}</span><span class="k">for email today</span></button>
+    <button class="chip" data-a="context" data-tip="${esc(ctx.length?"This week: "+ctx.map(r=>r.label).join(" · "):"Tell Workbench what this week is about.")}">${ic("target")}<span>${ctx.length?"This week's context":"Add context"}</span>${ctx.length?`<span class="k num">${ctx.length}</span>`:""}</button>
+    <button class="chip" data-a="weights" data-tip="Urgency ${S.set.w.u} · Importance ${S.set.w.i} · Quick wins ${S.set.w.e}">${ic("sliders")}<span>Weights</span></button>
+   </div></div>
+  <div class="stats">
+   ${stat("Need you today",n,n?`${fmtMin(st.used)} of ${fmtMin(S.set.budget)}`:"Nothing urgent fits today",n?tipList(st.today):"Nothing in Today","scrollto","today")}
+   ${stat("Decisions waiting",dec.length,dec[0]?dec[0].subject:"None right now",dec.length?tipList(dec):"No decisions waiting","filter","decision")}
+   ${stat("Agent approvals",q.length,q.length?`From ${[...new Set(q.map(x=>x.a.name))].slice(0,2).join(", ")}`:"Nothing to review",q.length?"queue:":"Agents that ask first put suggestions here","queue")}
+   ${stat("Handled by agents today",agentCount,agentToday[0]?agentToday[0].text:"No agent actions yet today",agentToday.length?"agentlog:":"Agents act on new mail after each sync","nav","activity")}
+  </div>
+  <div class="grid"><div class="col">
+   <section class="card" id="today"><div class="card-h"><h3><span class="ldot" style="background:var(--now)"></span>Today</h3><span class="sp"><span class="note num">${fmtMin(st.used)} of ${fmtMin(S.set.budget)}</span></span></div>
+    <div class="rows">${st.today.map(e=>rowHTML(e)).join("")||emptyHTML(st.open.length?"Nothing urgent fits today. Check Plan when you have time.":"No open email.")}</div></section>
+   ${st.ready.length?`<section class="card"><div class="card-h"><h3><span class="ldot" style="background:var(--ready)"></span>Ready to send</h3><span class="sp"><span class="note">Drafts saved in your mailbox</span></span></div><div class="rows">${st.ready.slice(0,5).map(e=>rowHTML(e)).join("")}</div></section>`:""}
+   <div class="lanes">${lane("plan","Plan",st.lanes.plan,"Important, not for today")}${lane("delegate","Delegate",st.lanes.delegate,"Someone else can own these")}${lane("letgo","Let go",st.lanes.letgo,"Low on every factor")}</div>
+  </div><div class="col">
+   <section class="card"><div class="card-h"><h3>${ic("bot")}Agent activity</h3><span class="sp">${q.length?`<button class="btn sm pri" data-a="queue">Review ${q.length}</button>`:""}<a class="btn sm" href="#/agents">Agents</a></span></div>
+    <div class="feed">${feed.map(l=>{const a=agentById(l.agentId);return `<div class="fi"><span class="ico" style="background:${a?a.color:"#8e8e93"}">${ic("bot")}</span><div class="x"><div>${esc(l.text)}</div><div class="s2">${a?`<a href="#/agents/${a.id}">${esc(a.name)}</a> · `:""}${when(l.t)}${l.undone?" · undone":""}</div></div>${l.reason?`<span class="ib" style="width:24px;height:24px" data-tip="${esc("Why: "+l.reason)}">${ic("info")}</span>`:""}</div>`;}).join("")||emptyHTML("Agents haven't done anything yet. They run on new mail after each sync.")}</div></section>
+   <section class="card"><div class="card-h"><h3>${ic("mail")}Mailboxes</h3><span class="sp"><a class="btn sm" href="#/connect">${ic("plus")}Add</a></span></div>
+    <div class="card-b">${S.accounts.map(a=>{const cnt=S.emails.filter(e=>e.accountId===a.id&&OPEN(e)).length;return `<div style="display:flex;align-items:center;gap:10px" data-tip="acct:${a.id}"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(a.email)}</span><span class="note num">${cnt} open</span><span class="sdot${a.error?" err":""}"></span></div>`;}).join("")||`<p class="muted">No mailboxes yet.</p>`}</div></section>
+  </div></div></div>`;
+}
+
+/* ================= inbox ================= */
+function inboxList(){
+ const B=S.box;compute();
+ let list=S.emails.filter(e=>B.folder==="inbox"?OPEN(e)||e.status==="ready":B.folder==="drafts"?e.status==="ready":HANDLED.includes(e.status));
+ if(B.account!=="all")list=list.filter(e=>e.accountId===B.account);
+ if(B.filter){const f=B.filter;list=list.filter(e=>f.kind==="project"?(e.ai&&e.ai.project)===f.v:f.kind==="sender"?dispName(e)===f.v:f.kind==="decision"?(e._c||score(e)).a.type==="decision":true);}
+ if(B.q){const q=B.q.toLowerCase();list=list.filter(e=>(dispName(e)+" "+e.fromEmail+" "+e.subject+" "+(e.body||e.snippet||"")+" "+(e.ai&&e.ai.project||"")).toLowerCase().includes(q));}
+ return list.sort((a,b)=>B.folder==="done"?(b.handledAt||"").localeCompare(a.handledAt||""):b.date.localeCompare(a.date));
+}
+function vInbox(){
+ const B=S.box;B.sel=S.route.id||null;
+ const list=inboxList();const sel=B.sel&&byId(B.sel);
+ const cnt=f=>S.emails.filter(e=>(B.account==="all"||e.accountId===B.account)&&(f==="inbox"?OPEN(e)||e.status==="ready":f==="drafts"?e.status==="ready":HANDLED.includes(e.status))).length;
+ const f=B.filter;const fl=f?{project:"Project",sender:"From",decision:"Decisions"}[f.kind]+(f.v?": "+f.v:""):"";
+ return topHTML("Inbox")+`<div class="mail${sel?" reading":""}">
+  <section class="list" aria-label="Messages"><div class="lh">
+   <label class="search">${ic("search")}<input id="mq" value="${esc(B.q)}" placeholder="Search mail" aria-label="Search mail"></label>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg">${[["inbox","Inbox"],["drafts","Drafts"],["done","Done"]].map(([k,v])=>`<button data-a="folder" data-v="${k}" aria-pressed="${B.folder===k}">${v} <span class="num faint">${cnt(k)}</span></button>`).join("")}</div>
+    ${S.accounts.length>1?`<select class="in" id="macct" style="width:auto;height:30px;padding:2px 8px" aria-label="Mailbox"><option value="all">All mailboxes</option>${S.accounts.map(a=>`<option value="${a.id}" ${B.account===a.id?"selected":""}>${esc(a.email)}</option>`).join("")}</select>`:""}</div>
+   ${f?`<div><button class="chip on" data-a="clearboxfilter">${esc(fl)} ${ic("x")}</button></div>`:""}
+  </div><div class="lb">${list.map(e=>rowHTML(e,{mail:true,sel:e.id===B.sel})).join("")||emptyHTML(B.q?"Nothing matches your search.":B.folder==="drafts"?"No drafts waiting.":B.folder==="done"?"Nothing handled in the last week.":"Inbox clear.")}</div></section>
+  <section class="read" aria-label="Message">${sel?readingHTML(sel):`<div class="empty" style="margin:auto">Select an email to read it.</div>`}</section></div>`;
+}
+function readingHTML(e){
+ const c=score(e),a=c.a,name=dispName(e),acc=accById(e.accountId);const o=S.box.orig[e.id];const open=OPEN(e),ready=e.status==="ready";const busy=S.busy.has(e.id);
+ const comp=S.box.compose&&S.box.compose.id===e.id?S.box.compose:null;const lane=laneOf(e);
+ const tb=`<div class="toolbar">
+  <button class="btn sm mobile-back" data-a="closemail" aria-label="Back to list">${ic("back")}</button>
+  ${open||ready?`<button class="btn sm" data-a="reply" data-id="${e.id}">${ic("reply")}Reply</button><button class="btn sm" data-a="forward" data-id="${e.id}">${ic("fwd")}Forward</button>`:""}
+  ${open?`<button class="btn sm" data-a="q-done" data-id="${e.id}" ${busy?"disabled":""} title="Archive it as handled">${ic("check")}Done</button><button class="btn sm" data-a="q-letgo" data-id="${e.id}" ${busy?"disabled":""} title="Archive with a Let go label">${ic("letgo")}Let go</button><button class="btn sm" data-a="q-pin" data-id="${e.id}" title="${e.provider==="microsoft"?"Flag":"Star"} it and pin to Today">${ic("pin")}${e.pinned?"Unpin":"Pin"}</button>`:""}
+  ${HANDLED.includes(e.status)&&e.status!=="sent"&&e.status!=="delegated"?`<button class="btn sm" data-a="reopen" data-id="${e.id}">${ic("back")}Move back to inbox</button>`:""}
+  <span style="margin-left:auto"></span><button class="btn sm" data-a="open" data-id="${e.id}" title="Why it ranks where it does">${ic("info")}Details</button></div>`;
+ let bodyHTML;
+ if(o&&o.loading)bodyHTML=`<div class="plain muted">Loading message…</div>`;
+ else if(o&&o.html&&!S.box.plain)bodyHTML=`<iframe class="frame" title="Message" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="${esc(frameDoc(o.html))}" style="height:min(70vh,900px)"></iframe>`;
+ else bodyHTML=`<div class="plain">${esc((o&&o.text)||e.body||e.snippet||"(no text)")}</div>`;
+ return tb+`<div class="rd">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${open?`<span class="pill p-${lane}" data-tip="score:${e.id}"><span class="d"></span>${LANE[lane]||lane} · ${c.s.toFixed(1)}</span>`:`<span class="pill p-${ready?"ready":"off"}">${ready?"Draft saved":esc(handledLabel(e))}</span>`}${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span class="tag">${TYPE_L[a.type]||"Email"}</span>${a.ask&&a.ask!=="Nothing"?`<span class="tag" data-tip="${esc(a.summary||"")}">Asks: ${esc(a.ask)}</span>`:""}</div>
+  <h2>${esc(e.subject)}</h2>
+  <div style="display:flex;gap:12px;align-items:flex-start"><div class="av" style="background:${avColor(name)}">${esc(initials(name))}</div>
+   <div class="hdrs" style="flex:1;min-width:0"><span>From</span><span><button class="who" style="font-weight:600" data-a="sender" data-v="${esc(name)}">${esc(name)}</button> <span class="faint">&lt;${esc(e.fromEmail)}&gt;</span></span>
+    <span>To</span><span>${esc((o&&o.to)||e.to||"")}</span>${o&&o.cc?`<span>Cc</span><span>${esc(o.cc)}</span>`:""}<span>Date</span><span>${esc(fullDate(e.date))}</span>${acc?`<span>Mailbox</span><span>${esc(acc.email)}</span>`:""}</div></div>
+  ${o&&o.html?`<div style="display:flex;gap:6px">${!S.box.plain?`<button class="btn sm" data-a="toggleimages" title="Remote images can tell senders you opened the email">${ic("eye")}${S.box.images?"Hide images":"Show images"}</button>`:""}<button class="btn sm" data-a="toggleplain">${S.box.plain?"Show formatted":"Plain text"}</button></div>`:""}
+  ${bodyHTML}
+  ${comp?composerHTML(e,comp):(open||ready)?`<button class="composer" style="text-align:left;color:var(--muted);flex-direction:row;align-items:center" data-a="reply" data-id="${e.id}">${ic("reply")} Reply to ${esc(firstName(name))}…</button>`:""}
  </div>`;
 }
-function renderHome(){
- const m=document.getElementById("main");
- if(S.mode==="loading"){m.innerHTML=`<p class="muted">Loading…</p>`;return;}
- if(S.mode==="signedout"){m.innerHTML=landingHTML();return;}
- const st=compute();
- const banners=[];
- if(S.mode==="demo")banners.push(`<div class="banner">Demo inbox · actions stay in this browser <button class="btn link sm sp" data-a="exitdemo">Connect a real inbox</button></div>`);
- S.accounts.filter(a=>a.error).forEach(a=>banners.push(`<div class="banner warn">${esc(a.email)} needs reconnecting. <a class="btn link sm sp" href="/api/auth/${a.provider}/start?hint=${encodeURIComponent(a.email)}">Reconnect</a></div>`));
- if(live()&&!S.accounts.length)banners.push(`<div class="banner">No mailbox connected. <a class="btn link sm sp" href="/api/auth/google/start">Connect Gmail</a><a class="btn link sm" href="/api/auth/microsoft/start">Connect Outlook</a></div>`);
- if(live()&&!S.emails.length&&!S.syncing){m.innerHTML=banners.join("")+`<div class="welcome"><h1>Nothing to sort yet.</h1><p>Workbench looks at your inbox from the last two weeks. New mail appears here when it syncs.</p><button class="btn pri" data-a="sync">${ic("sync")}Check mail now</button></div>`;return;}
- if(S.filter||S.q){
-  const f=S.filter;let list=[...st.open,...st.ready];
-  if(f){list=list.filter(e=>f.kind==="project"?(e.ai&&e.ai.project)===f.v:f.kind==="sender"?dispName(e)===f.v:f.kind==="decision"?e._c&&e._c.a.type==="decision":f.kind==="reply"?["request","decision","meeting"].includes(e._c&&e._c.a.type):true);}
-  if(S.q){const q=S.q.toLowerCase();list=list.filter(e=>(dispName(e)+" "+e.subject+" "+(e.body||e.snippet||"")+" "+(e.ai&&e.ai.project||"")).toLowerCase().includes(q));}
-  const label=f?{project:"Project",sender:"From",decision:"Decisions",reply:"Replies owed"}[f.kind]+(f.v?": "+f.v:""):"";
-  m.innerHTML=`<div class="filt">${S.searching||S.q?`<label class="search">${ic("search")}<input id="q" value="${esc(S.q)}" placeholder="Search mail" aria-label="Search mail"></label>`:""}${f?`<button class="chip on" data-a="clearfilter">${esc(label)} ${ic("x")}</button>`:""}${S.q&&!f?`<button class="btn sm" data-a="clearfilter">Clear</button>`:""}</div>
-   <section class="sec"><div class="sec-h"><span class="t">${list.length} open email${list.length===1?"":"s"}</span></div>${list.length?`<div class="card">${list.map(e=>rowHTML(e)).join("")}</div>`:`<p class="muted">Nothing matches.</p>`}</section>`;
-  const qi=document.getElementById("q");if(qi&&S.searching&&document.activeElement!==qi){qi.focus();qi.setSelectionRange(qi.value.length,qi.value.length);}
-  return;
- }
- const n=st.today.length;const dec=st.open.filter(e=>e._c.a.type==="decision"&&e._lane!=="letgo").length;
- const owed=st.open.filter(e=>["request","decision","meeting"].includes(e._c.a.type)&&e._lane!=="letgo").length;
- const ctx=activeCtx();
- const hero=n?`<em class="num">${n}</em> email${n>1?"s":""} need${n>1?"":"s"} you today.`:st.open.length?"You're clear for today.":"Everything's handled.";
- m.innerHTML=banners.join("")+`
-  <div><div class="date">${new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div>
-   <h1 class="hero">${hero}</h1>
-   <div class="chips">
-    <button class="chip" data-a="budget" data-tip="About ${fmtMin(st.used)} planned of ${fmtMin(S.set.budget)}. Click to change how much time you have for email today.">${ic("clock")}<span class="num">${fmtMin(S.set.budget)}</span><span class="k">today</span></button>
-    <button class="chip" data-a="context" data-tip="${esc(ctx.length?ctx.map(r=>r.label).join(" · "):"Tell Workbench what this week is about.")}">${ic("target")}<span>${ctx.length?"Context":"Add context"}</span>${ctx.length?`<span class="k num">${ctx.length} rule${ctx.length>1?"s":""}</span>`:""}</button>
-    ${dec?`<button class="chip" data-a="flag" data-v="decision" data-tip="Emails asking you to decide something">${dec} <span class="k">decision${dec>1?"s":""}</span></button>`:""}
-    ${owed?`<button class="chip" data-a="flag" data-v="reply" data-tip="Requests, decisions and meeting asks that aren't let go">${owed} <span class="k">replies owed</span></button>`:""}
-   </div></div>
-  ${n?`<section class="sec"><div class="sec-h"><span class="t"><span class="ldot" style="background:var(--now)"></span>Today</span><span class="sp"><span class="note num">${fmtMin(st.used)} of ${fmtMin(S.set.budget)}</span></span></div><div class="card">${st.today.map(e=>rowHTML(e)).join("")}</div></section>`:""}
-  ${section("ready","Ready to send",st.ready,{color:"var(--ready)",blurb:"Drafts saved in your mailbox"})}
-  ${section("plan","Plan",st.lanes.plan,{color:"var(--plan)"})}
-  ${section("delegate","Delegate",st.lanes.delegate,{color:"var(--del)",action:st.lanes.delegate.length?`<button class="btn link sm" data-a="delegateall">Forward all</button>`:""})}
-  ${section("letgo","Let go",st.lanes.letgo,{color:"var(--go)",action:`<button class="btn link sm" data-a="letgoall">Let go of ${st.lanes.letgo.length}</button>`})}
-  ${section("handled","Handled",st.handled)}
-  ${live()&&!S.ai.enabled?`<p class="note">AI isn't set up on this server, so Workbench is sorting with basic rules.</p>`:""}`;
+function frameDoc(html){
+ const img=S.box.images?"img-src data: cid: https: http:;":"img-src data: cid:;";
+ return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${img} style-src 'unsafe-inline'; font-src data:;"><base target="_blank"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14.5px;line-height:1.5;color:#1d1d1f;background:#fff;margin:16px 18px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
 }
-function renderAgents(){
- const m=document.getElementById("main");const A=S.set.agents;
- m.innerHTML=`<div><button class="back" data-a="home">${ic("back")}Inbox</button></div>
-  <div><h1 class="hero" style="margin:0">Agents</h1><p class="muted" style="margin:8px 0 0;max-width:62ch">Agents run on new mail each time Workbench syncs. They never delete. Agents can only send automatically to emails with importance 4 or lower; everything else asks you first. Every action shows in Activity.</p></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri sm" data-a="newagent">${ic("plus")}New agent</button>${S.emails.some(OPEN)?`<button class="btn sm" data-a="runall">Run all on open mail</button>`:""}</div>
-  <div class="card">${A.map(a=>{const n=agentMatches(a).length;const auto=a.mode==="auto"&&autoOK(a);return `<div class="agent">
-   <div class="grow"><span class="nm">${esc(a.name)}</span><span class="ds">${agentSentence(a)}</span>
-    <div class="ft"><span class="mode ${auto?"auto":"ask"}" data-tip="${auto?"Acts without asking. Undo from Activity, except sends and forwards.":"Puts suggestions under the bell for you to approve."}">${auto?"Acts automatically":"Asks first"}</span><span class="num">${n} open match${n===1?"":"es"}</span>
-     <button class="btn link sm" data-a="runagent" data-id="${a.id}" ${a.on&&n?"":"disabled"}>Run now</button><button class="btn link sm" data-a="editagent" data-id="${a.id}">Edit</button></div></div>
-   <button class="switch" role="switch" aria-checked="${a.on}" aria-label="${a.on?"Pause":"Resume"} ${esc(a.name)}" data-a="toggleagent" data-id="${a.id}"></button></div>`;}).join("")||`<div class="agent"><span class="muted">No agents yet.</span></div>`}</div>`;
+function composerHTML(e,c){
+ const draft=c.mode==="reply"?(S.drafts[e.id]??e.draft??""):(c.note||"");const busy=S.busy.has(e.id);
+ const acc=accById(e.accountId);
+ return `<div class="composer">
+  <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;flex-wrap:wrap"><b>${c.mode==="reply"?`Reply to ${esc(dispName(e))}`:"Forward"}</b><span class="faint">${acc?"from "+esc(acc.email):""}</span><span style="margin-left:auto"></span>${c.mode==="reply"?(S.drafting===e.id?`<span class="status"><span class="spin"></span>Writing</span>`:`<button class="btn sm" data-a="draft" data-id="${e.id}">${ic("spark")}${draft?"Redraft":"Draft with Claude"}</button>`):""}<button class="ib" style="width:28px;height:28px" data-a="closecompose" aria-label="Discard">${ic("x")}</button></div>
+  ${c.mode==="forward"?`<input class="in" id="fwdto" type="email" placeholder="Colleague's email" value="${esc(c.to||"")}" aria-label="Forward to">`:""}
+  <textarea id="${c.mode==="reply"?"draft":"fwdnote"}" data-id="${e.id}" placeholder="${c.mode==="reply"?"Write your reply":"Add a note"}">${esc(draft)}</textarea>
+  ${S.confirmSend===e.id?`<div class="bar2"><span>Send to <b>${esc(c.mode==="reply"?e.fromEmail:c.to)}</b>?</span><span style="margin-left:auto"></span><button class="btn sm" data-a="cancelsend">Cancel</button><button class="btn pri sm" data-a="dosend" data-id="${e.id}" ${busy?"disabled":""}>${ic("send")}Send now</button></div>`
+  :`<div class="bar2"><button class="btn pri sm" data-a="send" data-id="${e.id}" ${busy?"disabled":""}>${ic("send")}${c.mode==="reply"?"Send":"Forward"}</button>${c.mode==="reply"?`<button class="btn sm" data-a="savedraft" data-id="${e.id}" ${busy?"disabled":""}>Save draft</button>`:""}<span class="note">${c.mode==="reply"?"Replies in the same thread.":"Forwarding archives the original. It can't be undone."}</span></div>`}
+ </div>`;
 }
-function render(){renderBar();if(S.view==="agents"&&S.mode!=="signedout")renderAgents();else renderHome();renderSheet();renderModal();}
+async function loadOriginal(e){
+ const B=S.box;if(!e||B.orig[e.id])return;
+ if(!live()){B.orig[e.id]={html:null,text:e.body||e.snippet,to:e.to,cc:""};return;}
+ B.orig[e.id]={loading:true};render();
+ try{const r=await api(`/api/emails/${encodeURIComponent(e.id)}/original`);B.orig[e.id]=r;if(!e.body)e.body=r.text;}catch(err){B.orig[e.id]={html:null,text:e.body||e.snippet,to:e.to};}
+ if(S.route.view==="inbox"&&S.box.sel===e.id)render();
+}
 
-/* ---- sheet ---- */
-async function loadBody(e){
- if(e.body||!live())return;
- try{const r=await api(`/api/emails/${encodeURIComponent(e.id)}`);e.body=r.body;}catch(err){e.body=e.snippet;}
- if(S.sheet===e.id)renderSheet();
+/* ================= agents ================= */
+function vAgents(){
+ const A=S.set.agents;const id=S.route.id||(A[0]&&A[0].id);const a=agentById(id);
+ const tab=S.route.tab||"activity";
+ return topHTML("Agents",`<button class="btn sm" data-a="newagent">${ic("plus")}New agent</button>`)+`<div class="page">${bannersHTML()}
+  <div class="ag"><aside class="card agl" aria-label="Your agents">${A.map(x=>{const pend=queueItems().filter(q=>q.a.id===x.id).length;const runs=S.log.filter(l=>l.agentId===x.id).length;
+   return `<a class="agi" href="#/agents/${x.id}/${tab}" aria-current="${x.id===id}" data-tip="${esc(plain(agentSentence(x)))}"><span class="agico" style="background:${x.color}">${ic((x.instructions||"").trim()?"spark":"bot")}</span><span style="min-width:0"><div class="nm">${esc(x.name)}</div><div class="s2">${!x.on?"Paused":x.mode==="auto"?"Acts automatically":"Asks first"}${(x.instructions||"").trim()?" · Claude":""}</div></span>${pend?`<span class="pill p-ask num" data-tip="${pend} waiting for approval">${pend}</span>`:runs?`<span class="note num" data-tip="${runs} actions logged">${runs}</span>`:""}</a>`;}).join("")||emptyHTML("No agents yet.")}
+   <button class="agi" data-a="newagent" style="color:var(--accent)"><span class="agico" style="background:var(--fill);color:var(--accent)">${ic("plus")}</span><span class="nm">New agent</span></button></aside>
+  <section class="card" style="min-width:0">${a?agentDetail(a,tab):emptyHTML("Create an agent to get started.")}</section></div></div>`;
 }
-function renderSheet(){
- const o=document.getElementById("overlay");const old=o.querySelector(".sh-body");const top=old?old.scrollTop:0;
- const keepTa=document.getElementById("draft");const focused=keepTa&&document.activeElement===keepTa;const caret=focused?keepTa.selectionStart:null;
- o.querySelectorAll(".sheet,.scrim.s").forEach(x=>x.remove());
- const e=S.sheet&&byId(S.sheet);if(!e)return;
- const c=score(e),a=c.a,tot=c.s||1,name=dispName(e);const open=OPEN(e),ready=e.status==="ready";const busy=S.busy.has(e.id);
- const draft=S.drafts[e.id]??e.draft??"";
- const bar=(l,v,col)=>`<div class="b"><span>${l}</span><span class="tr"><i style="width:${v*10}%;background:${col}"></i></span><span class="num">${v.toFixed(1)}</span></div>`;
- const acc=S.accounts.find(x=>x.id===e.accountId);
- let foot;
- if(open||ready){
-  if(S.confirmSend===e.id)foot=`<span style="align-self:center;font-size:14px">Send to <b>${esc(e.fromEmail)}</b>?</span><span style="margin-left:auto"></span><button class="btn sm" data-a="cancelsend">Cancel</button><button class="btn pri sm" data-a="dosend" data-id="${e.id}" ${busy?"disabled":""}>${ic("send")}Send now</button>`;
-  else foot=`<button class="btn pri sm" data-a="send" data-id="${e.id}" ${draft.trim()&&!busy?"":"disabled"}>${ic("send")}Send</button>
-   <button class="btn sm" data-a="savedraft" data-id="${e.id}" ${draft.trim()&&!busy?"":"disabled"} title="Save as a draft in your mailbox">Save draft</button>
-   <button class="btn sm" data-a="s-done" data-id="${e.id}" ${busy?"disabled":""} title="Archives it">Done</button>
-   ${open?`<button class="btn sm" data-a="s-letgo" data-id="${e.id}" ${busy?"disabled":""}>Let go</button><button class="btn sm" data-a="delegate" data-id="${e.id}" ${busy?"disabled":""}>Forward</button>`:""}`;
- }else foot=e.status==="sent"||e.status==="delegated"?`<span class="note" style="align-self:center">${esc(handledLabel(e))}</span>`:`<button class="btn sm" data-a="reopen" data-id="${e.id}">Move back to inbox</button>`;
- const html=`<div class="scrim s" data-a="closesheet"></div><aside class="sheet" role="dialog" aria-modal="true" aria-label="Email">
-  <div class="sh-top"><button class="ib" data-a="closesheet" aria-label="Close">${ic("x")}</button>${acc&&S.accounts.length>1?`<span class="note">${esc(acc.email)}</span>`:""}<span style="margin-left:auto"></span>
-   ${open?`<button class="ib" data-a="s-pin" data-id="${e.id}" aria-label="${e.pinned?"Unpin":"Pin to Today"}" title="${e.pinned?"Unpin":"Pin to Today (stars or flags it)"}">${ic("pin",e.pinned?"pin":"")}</button>`:""}</div>
-  <div class="sh-body">
-   <div class="meta"><span class="av" style="width:28px;height:28px;font-size:11px;background:${avColor(name)}">${esc(initials(name))}</span><button class="who" style="font-weight:600;color:var(--fg)" data-a="sender" data-v="${esc(name)}">${esc(name)}</button><span class="faint">${esc(e.fromEmail)}</span><span class="faint">· ${when(e.date)}</span></div>
-   <h2>${esc(e.subject)}</h2>
-   <div class="meta">${a.project?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span class="tag">${TYPE_L[a.type]||"Email"}</span><span class="tag num">About ${fmtMin(a.min||5)}</span>${open?`<button class="score ${e._lane||"plan"} num" data-a="why" title="Why it ranks here">${c.s.toFixed(1)}</button>`:`<span class="tag">${esc(handledLabel(e)||"Draft saved")}</span>`}</div>
-   ${a.summary||a.ask?`<div class="box"><div class="kv"><span>Summary</span><span>${esc(a.summary||"")}</span><span>Asks you</span><span>${esc(a.ask||"Nothing")}</span></div></div>`:""}
-   ${open?`<div><button class="disc" data-a="why" aria-expanded="${S.sheetWhy}">${ic("chev")}Why it ranks here</button>
-    ${S.sheetWhy?`<div class="bars" style="margin-top:10px">${bar("Urgency",c.U,"var(--now)")}${bar("Importance",c.I,"var(--plan)")}${bar("Effort",c.E,"var(--del)")}
-     <p class="note" style="margin:2px 0 0">${Math.round(c.cu/tot*100)}% urgency, ${Math.round(c.ci/tot*100)}% importance, ${Math.round(c.ce/tot*100)}% quick win. ${e.by==="ai"?"Scored by Claude.":"Scored by basic rules."}${e._over?" Urgent, but it doesn't fit today's time.":""}</p>
-     ${(a.reasons||[]).length||c.applied.length?`<div class="chips" style="margin-top:4px">${(a.reasons||[]).map(r=>`<span class="tag">${esc(r)}</span>`).join("")}${c.applied.map(r=>`<span class="tag" style="color:var(--accent)">${esc(r.label)}</span>`).join("")}</div>`:""}
-     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn sm" data-a="weight" data-v="up" data-id="${e.id}">Weight ${esc(firstName(name))} higher</button><button class="btn sm" data-a="weight" data-v="down" data-id="${e.id}">Weight lower</button></div></div>`:""}</div>`:""}
-   <div><div class="msg ${S.sheetFull?"":"clip"}">${e.body==null&&live()?`<span class="muted">Loading message…</span>`:esc(e.body||e.snippet||"(no text)")}</div>${(e.body||"").length>380?`<button class="btn link sm" style="margin-top:6px;padding:0" data-a="full">${S.sheetFull?"Show less":"Show full message"}</button>`:""}</div>
-   ${open||ready?`<div class="fld"><div style="display:flex;align-items:center;gap:8px"><span class="lbl">Reply</span><span style="margin-left:auto"></span>${S.drafting===e.id?`<span class="status"><span class="spin"></span>Writing</span>`:live()&&S.ai.enabled?`<button class="btn sm" data-a="draft" data-id="${e.id}">${ic("spark")}${draft?"Redraft":"Draft with Claude"}</button>`:""}</div>
-    <textarea id="draft" data-id="${e.id}" placeholder="Write a reply${live()&&S.ai.enabled?", or ask Claude to draft one":""}">${esc(draft)}</textarea>
-    <span class="note">${live()?`Sends from ${esc(acc?acc.email:"your account")} as a reply in the same thread.`:"In the demo nothing is actually sent."}</span></div>`:""}
+function agentDetail(a,tab){
+ const T=[["activity","Activity"],["instructions","Instructions"],["context","Context"],["settings","Settings"],["test","Test run"]];
+ const hasIns=Boolean((a.instructions||"").trim());
+ const head=`<div class="agh"><span class="agico" style="background:${a.color};width:40px;height:40px;border-radius:12px">${ic(hasIns?"spark":"bot")}</span>
+  <div style="flex:1;min-width:0"><h2>${esc(a.name)}</h2><div class="meta" style="margin-top:2px"><span class="pill ${!a.on?"p-off":a.mode==="auto"?"p-auto":"p-ask"}" data-tip="${!a.on?"Paused: it won't run on new mail.":a.mode==="auto"?"Acts without asking. Sends only to importance 4 or lower.":"Suggestions wait under Agent approvals."}"><span class="d"></span>${!a.on?"Paused":a.mode==="auto"?"Acts automatically":"Asks first"}</span>${hasIns?`<span class="pill p-ask" data-tip="${isAI(a)?"Claude reads each matching email and decides using the instructions and context.":"Claude isn't available here, so the default action is used."}">Claude-powered</span>`:`<span class="pill p-off" data-tip="Applies the same action to every matching email.">Rule</span>`}</div></div>
+  <button class="btn sm" data-a="runagent" data-id="${a.id}" ${a.on?"":"disabled"}>${ic("play")}Run now</button>
+  <button class="switch" role="switch" aria-checked="${a.on}" aria-label="${a.on?"Pause":"Resume"} ${esc(a.name)}" data-a="toggleagent" data-id="${a.id}" data-tip="${a.on?"Pause":"Resume"} this agent"></button></div>
+  <div class="tabs" role="tablist">${T.map(([k,v])=>`<a class="tab" role="tab" href="#/agents/${a.id}/${k}" aria-selected="${tab===k}">${v}</a>`).join("")}</div>`;
+ let b="";
+ if(tab==="activity"){
+  const pend=queueItems().filter(q=>q.a.id===a.id);const logs=S.log.filter(l=>l.agentId===a.id);const matches=agentMatches(a);
+  const week=logs.filter(l=>Date.now()-new Date(l.t)<7*864e5&&!l.undone).reduce((s,l)=>s+((l.emailIds||[]).length||1),0);
+  b=`<div class="sentence">${agentSentence(a)}</div>
+   <div class="ministats"><div class="ms" data-tip="Emails this agent acted on in the last 7 days"><div class="n num">${week}</div><div class="k">Handled this week</div></div><div class="ms" data-tip="Suggestions waiting for your approval"><div class="n num">${pend.length}</div><div class="k">Waiting for you</div></div><div class="ms" data-tip="${matches.length?"list:"+matches.slice(0,5).map(e=>e.id).join(","):"No open emails match its scope"}"><div class="n num">${matches.length}</div><div class="k">Open emails in scope</div></div></div>
+   <div class="fld"><span class="lbl">Waiting for your approval</span>${pend.length?`<div style="display:flex;flex-direction:column;gap:8px">${pend.map(({q,e})=>qItemHTML(q,e,a)).join("")}</div>${pend.length>1?`<div><button class="btn sm pri" data-a="approveagent" data-id="${a.id}">Approve all ${pend.length}</button></div>`:""}`:`<p class="note">${a.mode==="auto"?"This agent acts automatically, so nothing waits here unless it wants to send to important mail.":"Nothing waiting."}</p>`}</div>
+   <div class="fld"><span class="lbl">What it has done</span>${logs.length?`<div class="lst">${logs.slice(0,30).map(l=>`<div class="li"${l.undone?' style="opacity:.5"':""}><div class="grow"><div style="font-size:13.5px">${esc(l.text)}</div><div class="s2">${when(l.t)}${l.undone?" · undone":""}${l.reason?" · "+esc(l.reason):""}</div></div>${(l.emailIds||[])[0]&&byId(l.emailIds[0])?`<button class="btn sm" data-a="openmail" data-id="${l.emailIds[0]}">View</button>`:""}${l.undone||!l.undoable?"":`<button class="btn sm" data-a="undo" data-id="${l.id}">Undo</button>`}</div>`).join("")}</div>`:`<p class="note">No actions yet. It runs on new mail after each sync, or press Run now.</p>`}</div>`;
+ }else if(tab==="instructions"){
+  b=`<p class="muted">Tell this agent what to do in plain language. Claude reads each email in the agent's scope and follows these instructions. Leave it empty to apply the default action from Settings to every match.</p>
+   <textarea id="ag-ins" data-id="${a.id}" style="min-height:200px" placeholder="e.g. For invoices from suppliers, file them under Finance. If the amount is over £5,000, pin it instead so I see it today.">${esc(a.instructions)}</textarea>
+   <div class="fld"><span class="lbl">What Claude may do</span><div class="checks">${ACTIONS.map(([k,v])=>`<label><input type="checkbox" data-allow="${k}" data-id="${a.id}" ${a.allowed.includes(k)?"checked":""}> ${v}</label>`).join("")}</div>
+   <span class="note">Claude can also decide to do nothing. Sending automatically is limited to emails with importance 4 or lower, whatever the instructions say.</span></div>
+   <div class="infobox">Start from an example: ${Object.keys(TEMPLATES).map(n=>`<button class="btn link sm" data-a="instemplate" data-v="${esc(n)}" data-id="${a.id}">${esc(n)}</button>`).join("")}</div>
+   <span class="note" id="savedmark"></span>`;
+ }else if(tab==="context"){
+  b=`<p class="muted">Facts this agent should know when deciding: availability, who covers what, addresses to forward to, how to sign off. Only this agent sees it.</p>
+   <textarea id="ag-ctx" data-id="${a.id}" style="min-height:200px" placeholder="e.g. Finance contact: dev.okoro@company.com&#10;I'm out of office 3 to 7 November.&#10;Sign off as 'Best, Maya'.">${esc(a.context)}</textarea>
+   <div class="fld"><span class="lbl">Shared with every agent</span><div class="box"><div class="kv"><span>About you</span><span>${esc(S.set.about||"Not set")}</span><span>This week</span><span>${esc(S.set.context||"Not set")}</span></div><div><a class="btn link sm" href="#/priorities" style="padding:0">Edit in Priorities</a></div></div></div>
+   <span class="note" id="savedmark"></span>`;
+ }else if(tab==="settings"){
+  const valField=a.field==="all"?`<input class="in" disabled value="Every new email">`:a.field==="type"?`<select class="in" id="ag-val" data-id="${a.id}">${TYPES.map(t=>`<option value="${t}" ${a.value===t?"selected":""}>${TYPE_L[t]}</option>`).join("")}</select>`
+   :`<input class="in" id="ag-val" data-id="${a.id}" value="${esc(a.value)}" ${a.field==="sender"?'list="sendl"':a.field==="project"?'list="projl"':""} placeholder="${a.field==="sender"?"Name or email":"Word or phrase"}"><datalist id="sendl">${Object.keys(senders()).map(n=>`<option value="${esc(n)}">`).join("")}</datalist><datalist id="projl">${projects().map(p=>`<option value="${esc(p)}">`).join("")}</datalist>`;
+  const pField=a.action==="reply"||a.action==="send"?`<div class="fld full"><label class="lbl" for="ag-param">Default reply text</label><textarea id="ag-param" data-id="${a.id}" style="min-height:80px">${esc(a.param)}</textarea><span class="note">Used when there are no instructions. {first} becomes the sender's first name.</span></div>`
+   :a.action==="project"||a.action==="delegate"?`<div class="fld full"><label class="lbl" for="ag-param">${a.action==="project"?"Project":"Colleague's email"}</label><input class="in" id="ag-param" data-id="${a.id}" value="${esc(a.param)}"></div>`:"";
+  b=`<div class="form">
+   <div class="fld full"><label class="lbl" for="ag-name">Name</label><input class="in" id="ag-name" data-id="${a.id}" value="${esc(a.name)}"></div>
+   <div class="fld"><label class="lbl" for="ag-field">Scope: when</label><select class="in" id="ag-field" data-id="${a.id}">${SCOPE_F.map(([k,v])=>`<option value="${k}" ${a.field===k?"selected":""}>${v}</option>`).join("")}</select></div>
+   <div class="fld"><label class="lbl" for="ag-val">Value</label>${valField}</div>
+   <div class="fld"><label class="lbl" for="ag-max">Only if importance is at most</label><input class="in" id="ag-max" data-id="${a.id}" type="number" min="0" max="10" value="${a.maxI??""}" placeholder="Any"></div>
+   <div class="fld"><label class="lbl" for="ag-act">Default action</label><select class="in" id="ag-act" data-id="${a.id}">${ACTIONS.map(([k,v])=>`<option value="${k}" ${a.action===k?"selected":""}>${v}</option>`).join("")}</select></div>
+   ${pField}
+   <div class="fld full"><span class="lbl">Approval</span><div class="seg"><button data-a="agmode" data-v="ask" data-id="${a.id}" aria-pressed="${a.mode==="ask"}">Ask me first</button><button data-a="agmode" data-v="auto" data-id="${a.id}" aria-pressed="${a.mode==="auto"}">Act automatically</button></div><span class="note">${a.mode==="auto"?"Acts on its own. Sends to important email (above 4) still wait for you.":"Every action waits under Agent approvals."}</span></div>
+   <div class="fld full"><span class="lbl">Colour</span><div style="display:flex;gap:8px">${AG_COLORS.map(c=>`<button data-a="agcolor" data-v="${c}" data-id="${a.id}" aria-label="Colour ${c}" style="width:26px;height:26px;border-radius:8px;background:${c};${a.color===c?"box-shadow:0 0 0 2px var(--surface),0 0 0 4px "+c:""}"></button>`).join("")}</div></div>
   </div>
-  <div class="sh-foot">${foot}</div></aside>`;
- o.insertAdjacentHTML("beforeend",html);
- const nb=o.querySelector(".sh-body");if(nb)nb.scrollTop=top;
- if(focused){const ta=document.getElementById("draft");if(ta){ta.focus();if(caret!=null)ta.setSelectionRange(caret,caret);}}
+  ${a.action==="delegate"&&!isEmail(a.param)&&!hasIns?`<div class="warnbox">Add the colleague's email address to forward to.</div>`:""}
+  <div style="display:flex;gap:8px;align-items:center"><span class="note" id="savedmark"></span><span style="margin-left:auto"></span><button class="btn sm danger" data-a="delagent" data-id="${a.id}">Delete agent</button></div>`;
+ }else if(tab==="test"){
+  const t=S.tests[a.id];const matches=agentMatches(a);
+  b=`<p class="muted">See what this agent would do with your open mail right now. Nothing is changed.</p>
+   <div style="display:flex;gap:8px;align-items:center"><button class="btn pri sm" data-a="testagent" data-id="${a.id}" ${t&&t.busy||!matches.length?"disabled":""}>${t&&t.busy?"Thinking…":"Preview on "+matches.length+" email"+(matches.length===1?"":"s")}</button>${!matches.length?`<span class="note">No open emails are in this agent's scope.</span>`:""}</div>
+   ${t&&t.res?`<div>${t.res.map(d=>{const e=byId(d.id);if(!e)return "";const auto=autoAllowed(a,d,e);return `<div class="dec"><div style="min-width:0"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.subject)}</div><div class="note">${esc(dispName(e))} · ${esc(d.reason||"")}</div>${d.param&&(d.action==="reply"||d.action==="send")?`<div class="qitem" style="margin-top:6px"><div class="dr">${esc(String(d.param).replace(/\{first\}/g,firstName(dispName(e))))}</div></div>`:""}</div><span class="pill ${d.action==="none"?"p-off":auto?"p-auto":"p-ask"}" data-tip="${d.action==="none"?"Would leave it alone":auto?"Would act automatically":"Would ask you first"}">${d.action==="none"?"No action":esc(ACT_L[d.action]||d.action)}</span></div>`;}).join("")}</div>`:""}`;
+ }
+ return head+`<div class="agb">${b}</div>`;
 }
+function qItemHTML(q,e,a){
+ return `<div class="qitem"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:14px">${esc(ACT_L[q.action||a.action]||q.action)}</b><span class="muted" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1">${esc(e.subject)} · ${esc(dispName(e))}</span></div>
+  ${q.reason?`<div class="r">${esc(q.reason)}</div>`:""}
+  ${(q.action==="reply"||q.action==="send")&&q.param?`<div class="dr">${esc(String(q.param).replace(/\{first\}/g,firstName(dispName(e))))}</div>`:""}
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn pri sm" data-a="approve" data-id="${q.id}">Approve</button><button class="btn sm" data-a="openmail" data-id="${e.id}">View email</button><button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button></div></div>`;
+}
+const TEMPLATES={
+ "Meeting replies":{field:"type",value:"meeting",action:"reply",allowed:["reply","pin"],instructions:"For meeting requests, draft a short, friendly reply proposing two times from my availability in the context. If it's from my manager, accept their suggested time. If it isn't really a meeting request, do nothing."},
+ "Supplier invoices":{field:"any",value:"invoice",action:"project",param:"Finance",allowed:["project","pin","done"],instructions:"For invoices and receipts, file them under the project Finance. If the amount is over £5,000 or it says overdue, pin it instead so I see it today."},
+ "VIP watcher":{field:"all",value:"",action:"pin",allowed:["pin","reply"],instructions:"If an email is from someone listed as a VIP in the context and asks me something, pin it. If they're only sharing information, do nothing."}
+};
 
-/* ---- modals ---- */
+/* ================= priorities, activity, accounts ================= */
 const PRESETS={balanced:["Balanced",40,40,20],deep:["Deep work",20,70,10],catchup:["Catch-up",30,20,50],fire:["Firefighting",70,25,5]};
 function prefPreview(){const st=compute();const t=st.today.slice(0,3).map(e=>e.subject);return t.length?`Today would start with: ${t.map(esc).join(" · ")}`:"Nothing would land in Today with these weights.";}
-function renderModal(){
- const o=document.getElementById("overlay");o.querySelectorAll(".modal,.scrim.m").forEach(x=>x.remove());
- const M=S.modal;if(!M)return;let h="",title="",foot="";
- if(M.t==="prefs"){title="Priorities";const w=S.set.w;
-  const sl=(k,l)=>`<div class="sl"><label for="w-${k}">${l}</label><input id="w-${k}" type="range" min="0" max="100" value="${w[k]}" data-w="${k}"><span class="num" id="wv-${k}">${w[k]}</span></div>`;
-  h=`<div class="fld"><span class="lbl">How to weigh each email</span><div class="seg">${Object.entries(PRESETS).map(([k,p])=>`<button data-a="preset" data-v="${k}" aria-pressed="${w.u===p[1]&&w.i===p[2]&&w.e===p[3]}">${p[0]}</button>`).join("")}</div></div>
-   <div style="display:flex;flex-direction:column;gap:12px">${sl("u","Urgency")}${sl("i","Importance")}${sl("e","Quick wins")}</div>
-   <p class="note" id="wprev">${prefPreview()}</p>
-   <div class="fld"><span class="lbl">People and topics</span>
-    <div class="list">${(S.set.rules||[]).map(r=>`<div class="li"><span class="grow">${esc(r.label)}</span><button class="ib" style="width:28px;height:28px" data-a="rmrule" data-id="${r.id}" aria-label="Remove rule">${ic("x")}</button></div>`).join("")||`<div class="li note">No rules yet. Add one below, or use “Weight higher” on any email.</div>`}</div>
-    <div class="form" style="margin-top:4px"><input class="in" id="r-who" placeholder="Name, email or word" aria-label="Who or what" list="sendl"><datalist id="sendl">${Object.keys(senders()).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
-     <div style="display:flex;gap:8px"><select class="in" id="r-eff" aria-label="Effect"><option value="mul|1.5">More important</option><option value="urg|2">More urgent</option><option value="cap|2">Less important</option></select><button class="btn sm" data-a="addrule">Add</button></div></div></div>
-   <div class="fld"><span class="lbl">About you</span><textarea id="about" style="min-height:80px" placeholder="Your role and the people who matter, e.g. I'm a programme manager. My manager is Helen Marsh. Northwind is our key client.">${esc(S.set.about)}</textarea><span class="note">Claude uses this when scoring and drafting.</span></div>`;
-  foot=`<button class="btn pri sm" data-a="saveprefs">Done</button>`;}
- else if(M.t==="context"){title="This week's context";const ctx=activeCtx();
-  h=`<p class="muted">Tell Workbench what matters right now, in your own words. It turns this into rules you can see and remove. Rules expire on Friday.</p>
-   <textarea id="ctx" placeholder="This week I'm focused on the Q4 budget. Priya (priya@company.com) is covering for Tom. Ignore anything about the office move.">${esc(M.text??S.set.context)}</textarea>
-   ${M.busy?`<span class="status"><span class="spin"></span>Reading your context</span>`:""}
-   ${ctx.length?`<div class="list">${ctx.map(r=>`<div class="li"><span class="grow">${esc(r.label)}<div class="s2">Until ${shortDate(r.expires)}</div></span><button class="ib" style="width:28px;height:28px" data-a="rmctx" data-id="${r.id}" aria-label="Remove">${ic("x")}</button></div>`).join("")}</div>`:""}`;
-  foot=`<button class="btn sm" data-a="closemodal">Close</button><button class="btn pri sm" data-a="applyctx" ${M.busy?"disabled":""}>Update</button>`;}
- else if(M.t==="letgo"){const st=compute();const list=st.lanes.letgo;title=`Let go of ${list.length} emails?`;
-  const by={};list.forEach(e=>{const k=TYPE_L[e._c.a.type]||"Other";by[k]=(by[k]||0)+1;});
-  h=`<p class="muted">These score low on urgency, importance and effort. Workbench archives them${live()?" in your mailbox with a “Workbench/Let go” label":""}. You can move any back or undo from Activity.</p><div class="list">${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="li"><span class="grow">${k}</span><span class="num muted">${v}</span></div>`).join("")}</div>`;
-  foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="doletgo">Let go</button>`;}
- else if(M.t==="delegateall"){const st=compute();const list=st.lanes.delegate;title=`Forward ${list.length} emails?`;
-  h=`<p class="muted">Each is forwarded with a short note, then archived. Forwarding can't be undone.</p><div class="list">${list.map(e=>{const to=M.to[e.id]??(isEmail(e._c.delegate)?e._c.delegate:"");return `<div class="li" style="flex-wrap:wrap"><span class="grow">${esc(e.subject)}</span><input class="in" style="max-width:220px" data-dto="${e.id}" value="${esc(to)}" placeholder="${esc(e._c.delegate||"")}'s email" aria-label="Forward to"></div>`;}).join("")}</div>`;
-  foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="dodelegateall">Forward</button>`;}
- else if(M.t==="agent"){const b=M.a;title=M.edit?"Edit agent":"New agent";
-  const valField=b.field==="type"?`<select class="in" id="g-val">${TYPES.map(t=>`<option value="${t}" ${b.value===t?"selected":""}>${TYPE_L[t]}</option>`).join("")}</select>`
-   :b.field==="project"?`<input class="in" id="g-val" list="projl" value="${esc(b.value)}"><datalist id="projl">${projects().map(p=>`<option value="${esc(p)}">`).join("")}</datalist>`
-   :`<input class="in" id="g-val" value="${esc(b.value)}" ${b.field==="sender"?'list="sendl2"':""} placeholder="${b.field==="sender"?"Name or email":"Word or phrase"}">${b.field==="sender"?`<datalist id="sendl2">${Object.keys(senders()).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>`:""}`;
-  const pField=b.action==="reply"||b.action==="send"?`<div class="fld full"><label class="lbl" for="g-param">Reply text</label><textarea id="g-param" style="min-height:80px">${esc(b.param)}</textarea><span class="note">Use {first} for the sender's first name.</span></div>`
-   :b.action==="project"||b.action==="delegate"?`<div class="fld full"><label class="lbl" for="g-param">${b.action==="project"?"Project":"Colleague's email"}</label><input class="in" id="g-param" value="${esc(b.param)}" ${b.action==="delegate"?'type="email" placeholder="name@company.com"':""}></div>`:"";
-  const bad=b.mode==="auto"&&!autoOK(b);const badDel=b.action==="delegate"&&!isEmail(b.param);const n=agentMatches(b).length;
-  h=`${!M.edit&&live()&&S.ai.enabled?`<div class="fld"><span class="lbl">Describe it</span><div style="display:flex;gap:8px"><input class="in" id="g-desc" value="${esc(M.desc||"")}" placeholder="e.g. Archive Jira updates unless they mention me"><button class="btn sm" data-a="buildagent" ${M.busy?"disabled":""}>${M.busy?"Building…":"Build"}</button></div></div>`:""}
-   <div class="form">
-    <div class="fld full"><label class="lbl" for="g-name">Name</label><input class="in" id="g-name" value="${esc(b.name)}" placeholder="e.g. Jira tidy"></div>
-    <div class="fld"><label class="lbl" for="g-field">When</label><select class="in" id="g-field">${[["type","The email is a"],["sender","The sender includes"],["project","The project is"],["subject","The subject includes"],["any","The email mentions"]].map(([k,v])=>`<option value="${k}" ${b.field===k?"selected":""}>${v}</option>`).join("")}</select></div>
-    <div class="fld"><label class="lbl" for="g-val">Value</label>${valField}</div>
-    <div class="fld"><label class="lbl" for="g-act">Then</label><select class="in" id="g-act">${[["letgo","Let it go"],["done","Mark done"],["pin","Pin to Today"],["reply","Save a draft reply"],["send","Send a fixed reply"],["project","File under a project"],["delegate","Forward to a colleague"]].map(([k,v])=>`<option value="${k}" ${b.action===k?"selected":""}>${v}</option>`).join("")}</select></div>
-    <div class="fld"><label class="lbl" for="g-max">Only if importance is at most</label><input class="in" id="g-max" type="number" min="0" max="10" value="${b.maxI??""}" placeholder="Any"></div>
-    ${pField}
-    <div class="fld full"><span class="lbl">Approval</span><div class="seg"><button data-a="gmode" data-v="ask" aria-pressed="${b.mode==="ask"}">Ask me first</button><button data-a="gmode" data-v="auto" aria-pressed="${b.mode==="auto"}">Act automatically</button></div></div>
-   </div>
-   <p class="note num">${n} open email${n===1?"":"s"} match right now.</p>
-   ${bad?`<div class="warnbox">Agents can only send automatically when importance is limited to 4 or lower. Set a limit, or choose “Ask me first”.</div>`:""}
-   ${badDel?`<div class="warnbox">Add the colleague's email address to forward to.</div>`:""}`;
-  foot=`${M.edit?`<button class="btn sm danger" data-a="delagent" style="margin-right:auto">Delete</button>`:""}<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="saveagent" ${bad||badDel?"disabled":""}>${M.edit?"Save":"Create agent"}</button>`;}
- else if(M.t==="deleteme"){title="Delete your Workbench data?";h=`<p class="muted">This disconnects every mailbox and permanently deletes all mail, scores, settings, agents and history Workbench stored. Your actual mailboxes aren't affected. This can't be undone.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" style="background:var(--now)" data-a="dodeleteme">Delete everything</button>`;}
- else if(M.t==="disconnect"){const a=S.accounts.find(x=>x.id===M.id);title=`Disconnect ${a?a.email:"this mailbox"}?`;h=`<p class="muted">Workbench stops reading this mailbox and deletes everything it synced from it. Your mail itself isn't touched. To fully revoke access, also remove Workbench in your ${a&&a.provider==="microsoft"?"Microsoft":"Google"} account's security settings.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" style="background:var(--now)" data-a="dodisconnect" data-id="${M.id}">Disconnect</button>`;}
- o.insertAdjacentHTML("beforeend",`<div class="scrim m" data-a="closemodal"></div><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="mo-h"><h2>${esc(title)}</h2><button class="ib" data-a="closemodal" aria-label="Close">${ic("x")}</button></div><div class="mo-b">${h}</div><div class="mo-f">${foot}</div></div>`);
+const sliders=w=>[["u","Urgency","How soon it matters"],["i","Importance","How much it matters"],["e","Quick wins","Favour low-effort emails"]].map(([k,l,h])=>`<div class="sl"><label for="w-${k}" title="${h}">${l}</label><input id="w-${k}" type="range" min="0" max="100" value="${w[k]}" data-w="${k}"><span class="num" id="wv-${k}">${w[k]}</span></div>`).join("");
+const presetSeg=w=>`<div class="seg">${Object.entries(PRESETS).map(([k,p])=>`<button data-a="preset" data-v="${k}" aria-pressed="${w.u===p[1]&&w.i===p[2]&&w.e===p[3]}">${p[0]}</button>`).join("")}</div>`;
+const ctxList=ctx=>ctx.length?`<div class="lst">${ctx.map(r=>`<div class="li"><span class="grow">${esc(r.label)}<div class="s2">Until ${shortDate(r.expires)}</div></span><button class="ib" style="width:28px;height:28px" data-a="rmctx" data-id="${r.id}" aria-label="Remove">${ic("x")}</button></div>`).join("")}</div>`:"";
+function vPriorities(){
+ const w=S.set.w;const ctx=activeCtx();
+ return topHTML("Priorities")+`<div class="page"><div class="grid"><div class="col">
+  <section class="card"><div class="card-h"><h3>How to weigh each email</h3></div><div class="card-b">${presetSeg(w)}${sliders(w)}
+   <p class="note" id="wprev">${prefPreview()}</p><p class="note">Scores are a weighted average, so no single factor can zero out the others.</p></div></section>
+  <section class="card"><div class="card-h"><h3>People and topics</h3></div><div class="card-b">
+   <div class="lst">${(S.set.rules||[]).map(r=>`<div class="li"><span class="grow">${esc(r.label)}</span><button class="ib" style="width:28px;height:28px" data-a="rmrule" data-id="${r.id}" aria-label="Remove rule">${ic("x")}</button></div>`).join("")||`<div class="li note">No rules yet. Add one here, or click any sender's name.</div>`}</div>
+   <div class="form"><input class="in" id="r-who" placeholder="Name, email or word" aria-label="Who or what" list="sendl"><datalist id="sendl">${Object.keys(senders()).map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
+    <div style="display:flex;gap:8px"><select class="in" id="r-eff" aria-label="Effect"><option value="mul|1.5">More important</option><option value="urg|2">More urgent</option><option value="cap|2">Less important</option></select><button class="btn sm" data-a="addrule">Add</button></div></div></div></section>
+ </div><div class="col">
+  <section class="card"><div class="card-h"><h3>This week's context</h3></div><div class="card-b">
+   <p class="note">Say what matters right now. Workbench turns it into rules that expire on Friday, and every agent can read it.</p>
+   <textarea id="ctx" placeholder="This week I'm focused on the Q4 budget. Priya (priya@company.com) is covering for Tom. Ignore anything about the office move.">${esc(S.set.context)}</textarea>
+   <div><button class="btn pri sm" data-a="applyctx" ${S.ctxBusy?"disabled":""}>${S.ctxBusy?"Reading…":"Update context"}</button></div>${ctxList(ctx)}</div></section>
+  <section class="card"><div class="card-h"><h3>About you</h3></div><div class="card-b">
+   <textarea id="about" style="min-height:90px" placeholder="Your role and the people who matter, e.g. I'm a programme manager. My manager is Helen Marsh. Northwind is our key client.">${esc(S.set.about)}</textarea>
+   <span class="note">Claude uses this when scoring, drafting and running agents. <span id="savedmark"></span></span></div></section>
+ </div></div></div>`;
+}
+function vActivity(){
+ const f=S.actFilter;const L=S.log.filter(l=>f==="all"||(f==="agents"?l.agentId:!l.agentId));
+ return topHTML("Activity")+`<div class="page">
+  <div class="seg">${[["all","Everything"],["you","You"],["agents","Agents"]].map(([k,v])=>`<button data-a="actfilter" data-v="${k}" aria-pressed="${f===k}">${v}</button>`).join("")}</div>
+  <section class="card"><div class="feed">${L.map(l=>{const a=l.agentId&&agentById(l.agentId);return `<div class="fi"${l.undone?' style="opacity:.5"':""}><span class="ico" style="background:${a?a.color:"var(--fg)"};color:var(--bg)">${a?ic("bot"):ic("user")}</span><div class="x"><div>${esc(l.text)}</div><div class="s2">${a?`<a href="#/agents/${a.id}">${esc(a.name)}</a>`:esc(l.actor)} · ${esc(fullDate(l.t))}${l.undone?" · undone":""}${l.reason?` · <span data-tip="${esc(l.reason)}" style="text-decoration:underline dotted;cursor:help">why</span>`:""}</div></div><div style="display:flex;gap:4px">${(l.emailIds||[])[0]&&byId(l.emailIds[0])?`<button class="btn sm" data-a="openmail" data-id="${l.emailIds[0]}">View</button>`:""}${l.undone||!l.undoable?"":`<button class="btn sm" data-a="undo" data-id="${l.id}">Undo</button>`}</div></div>`;}).join("")||emptyHTML("Nothing yet. Everything you and your agents do shows up here.")}</div></section></div>`;
+}
+function vAccounts(){
+ return topHTML("Accounts")+`<div class="page"><div class="grid"><div class="col">
+  <section class="card"><div class="card-h"><h3>Mailboxes</h3><span class="sp">${live()?`<button class="btn sm" data-a="sync" ${S.syncing?"disabled":""}>${ic("sync")}Check mail</button>`:""}</span></div>
+   <div class="card-b">${S.accounts.length?`<div class="lst">${S.accounts.map(a=>{const cnt=S.emails.filter(e=>e.accountId===a.id).length;return `<div class="li"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><div class="grow"><div>${esc(a.email)}</div><div class="s2">${pv(a.provider).n} · ${a.error?"Reconnect needed":a.lastSync?"Synced "+esc(fullDate(a.lastSync)):"Not synced yet"} · ${cnt} emails</div></div>${a.error?`<a class="btn sm pri" href="/api/auth/${a.provider}/start?hint=${encodeURIComponent(a.email)}">Reconnect</a>`:""}${live()?`<button class="btn sm" data-a="disconnect" data-id="${a.id}">Disconnect</button>`:""}</div>`;}).join("")}</div>`:`<p class="muted">No mailboxes connected.</p>`}
+   <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c};width:18px;height:18px">G</span>Add Gmail</a><a class="btn" href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c};width:18px;height:18px">O</span>Add Outlook</a></div>
+   <p class="note">Workbench syncs the last 14 days of each inbox when you open it, and every 5 minutes while it's open.</p></div></section>
+ </div><div class="col">
+  <section class="card"><div class="card-h"><h3>Your account</h3></div><div class="card-b"><div class="kv"><span>Name</span><span>${esc(S.user&&S.user.name||"Not set")}</span><span>Email</span><span>${esc(S.user&&S.user.email||"")}</span>${live()?`<span>Claude</span><span>${S.ai.enabled?`${S.ai.remaining} AI actions left today`:"Not set up on this server"}</span>`:""}</div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap">${live()?`<button class="btn sm" data-a="logout">Sign out</button><button class="btn sm danger" data-a="deleteme">Delete my data</button>`:`<button class="btn sm pri" data-a="exitdemo">Leave the demo</button>`}<a class="btn link sm" href="/privacy">Privacy</a></div></div></section>
+ </div></div></div>`;
 }
 
-/* ---- popovers ---- */
+/* ================= overlays ================= */
+function renderOverlays(){renderSheet();renderModal();}
+function renderSheet(){
+ const o=document.getElementById("overlay");const old=o.querySelector(".sh-body");const top=old?old.scrollTop:0;
+ o.querySelectorAll(".sheet,.scrim.s").forEach(x=>x.remove());
+ const e=S.sheet&&byId(S.sheet);if(!e||S.mode==="signedout")return;
+ compute();const c=score(e),a=c.a,tot=c.s||1,name=dispName(e);const open=OPEN(e);
+ const bar=(l,v,col)=>`<div class="b"><span>${l}</span><span class="tr"><i style="width:${v*10}%;background:${col}"></i></span><span class="num">${v.toFixed(1)}</span></div>`;
+ const lane=laneOf(e);const qs=S.queue.filter(q=>q.emailId===e.id);
+ o.insertAdjacentHTML("beforeend",`<div class="scrim s" data-a="closesheet"></div><aside class="sheet" role="dialog" aria-modal="true" aria-label="Email details">
+  <div class="sh-top"><button class="ib" data-a="closesheet" aria-label="Close">${ic("x")}</button><span class="note">Triage details</span><span style="margin-left:auto"></span><button class="btn sm" data-a="openmail" data-id="${e.id}">${ic("inbox")}Open in Inbox</button></div>
+  <div class="sh-body">
+   <div class="meta"><span class="av" style="width:28px;height:28px;font-size:11px;background:${avColor(name)}">${esc(initials(name))}</span><button class="who" style="font-weight:600;color:var(--fg)" data-a="sender" data-v="${esc(name)}">${esc(name)}</button><span class="faint">${esc(e.fromEmail)} · ${when(e.date)}</span></div>
+   <h2>${esc(e.subject)}</h2>
+   <div class="meta">${open?`<span class="pill p-${lane}"><span class="d"></span>${LANE[lane]}</span>`:`<span class="pill p-off">${esc(handledLabel(e)||"Draft saved")}</span>`}${a.project?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span class="tag">${TYPE_L[a.type]||"Email"}</span><span class="tag num">About ${fmtMin(a.min||5)}</span></div>
+   <div class="box"><div class="kv"><span>Summary</span><span>${esc(a.summary||e.snippet||"")}</span><span>Asks you</span><span>${esc(a.ask||"Nothing")}</span></div></div>
+   ${open?`<div class="bars">${bar("Urgency",c.U,"var(--now)")}${bar("Importance",c.I,"var(--plan)")}${bar("Effort",c.E,"var(--del)")}
+    <p class="note">Score ${c.s.toFixed(1)}: ${Math.round(c.cu/tot*100)}% urgency, ${Math.round(c.ci/tot*100)}% importance, ${Math.round(c.ce/tot*100)}% quick win. ${e.by==="ai"?"Scored by Claude.":"Scored by basic rules."}${e._over?" Urgent, but it doesn't fit today's time.":""}</p>
+    ${(a.reasons||[]).length||c.applied.length?`<div class="chips">${(a.reasons||[]).map(r=>`<span class="tag">${esc(r)}</span>`).join("")}${c.applied.map(r=>`<span class="tag" style="color:var(--accent)">${esc(r.label)}</span>`).join("")}</div>`:""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="weight" data-v="up" data-id="${e.id}">Weight ${esc(firstName(name))} higher</button><button class="btn sm" data-a="weight" data-v="down" data-id="${e.id}">Weight lower</button></div></div>`:""}
+   ${qs.map(q=>{const ag=agentById(q.agentId);return ag?`<div class="fld"><span class="lbl">${esc(ag.name)} suggests</span>${qItemHTML(q,e,ag)}</div>`:"";}).join("")}
+   <div><button class="disc" data-a="full" aria-expanded="${S.sheetFull}">${ic("chev")}Message</button>${S.sheetFull?`<div class="msg" style="margin-top:8px">${esc(e.body||e.snippet||"")}</div>`:""}</div>
+  </div>
+  <div class="sh-foot">${open?`<button class="btn pri sm" data-a="openmail" data-id="${e.id}" data-v="reply">${ic("reply")}Reply</button><button class="btn sm" data-a="s-done" data-id="${e.id}">Done</button><button class="btn sm" data-a="s-letgo" data-id="${e.id}">Let go</button><button class="btn sm" data-a="s-pin" data-id="${e.id}">${e.pinned?"Unpin":"Pin"}</button><button class="btn sm" data-a="delegate" data-id="${e.id}">Forward</button>`:e.status==="ready"?`<button class="btn pri sm" data-a="openmail" data-id="${e.id}" data-v="reply">${ic("send")}Review and send</button>`:e.status!=="sent"&&e.status!=="delegated"?`<button class="btn sm" data-a="reopen" data-id="${e.id}">Move back to inbox</button>`:""}</div></aside>`);
+ const nb=o.querySelector(".sh-body");if(nb)nb.scrollTop=top;
+}
+function renderModal(){
+ const o=document.getElementById("overlay");const keep=captureFocus();o.querySelectorAll(".modal,.scrim.m").forEach(x=>x.remove());
+ const M=S.modal;if(!M)return;let h="",title="",foot="",wide=false;
+ if(M.t==="compose"){title="New email";wide=true;
+  const accs=S.accounts;h=`<div class="form">
+   <div class="fld full"><label class="lbl" for="c-from">From</label><select class="in" id="c-from">${accs.map(a=>`<option value="${a.id}" ${M.from===a.id?"selected":""}>${esc(a.email)}</option>`).join("")}</select></div>
+   <div class="fld"><label class="lbl" for="c-to">To</label><input class="in" id="c-to" value="${esc(M.to||"")}" placeholder="name@company.com, …"></div>
+   <div class="fld"><label class="lbl" for="c-cc">Cc</label><input class="in" id="c-cc" value="${esc(M.cc||"")}" placeholder="Optional"></div>
+   <div class="fld full"><label class="lbl" for="c-subj">Subject</label><input class="in" id="c-subj" value="${esc(M.subject||"")}"></div>
+   <div class="fld full"><label class="lbl" for="c-body">Message</label><textarea id="c-body" style="min-height:200px">${esc(M.body||"")}</textarea></div></div>
+   ${!accs.length?`<div class="warnbox">Connect a mailbox to send email.</div>`:""}`;
+  foot=M.confirm?`<span style="margin-right:auto;align-self:center;font-size:14px">Send to <b>${esc(M.to)}</b>?</span><button class="btn sm" data-a="c-cancelsend">Cancel</button><button class="btn pri sm" data-a="c-dosend" ${M.busy?"disabled":""}>${ic("send")}Send now</button>`:`<button class="btn sm" data-a="closemodal">Discard</button><button class="btn sm" data-a="c-draft" ${M.busy||!accs.length?"disabled":""}>Save draft</button><button class="btn pri sm" data-a="c-send" ${M.busy||!accs.length?"disabled":""}>${ic("send")}Send</button>`;}
+ else if(M.t==="context"){title="This week's context";
+  h=`<p class="muted">Tell Workbench what matters right now. It turns this into rules you can see and remove. Rules expire on Friday.</p>
+   <textarea id="ctx" placeholder="This week I'm focused on the Q4 budget. Priya (priya@company.com) is covering for Tom.">${esc(S.set.context)}</textarea>
+   ${S.ctxBusy?`<span class="status"><span class="spin"></span>Reading your context</span>`:""}${ctxList(activeCtx())}`;
+  foot=`<button class="btn sm" data-a="closemodal">Close</button><button class="btn pri sm" data-a="applyctx" ${S.ctxBusy?"disabled":""}>Update</button>`;}
+ else if(M.t==="lane"){const st=compute();const list=st.lanes[M.lane]||[];title=`${LANE[M.lane]} · ${list.length}`;wide=true;
+  h=`<p class="muted">${{plan:"Important, but not for today. Give these a slot later.",delegate:"Someone else could own these. Forwarding sends each one to the colleague and archives it.",letgo:"Low on urgency, importance and effort. Letting go archives them with a label. You can move any back."}[M.lane]}</p>
+   <div class="card"><div class="rows">${list.map(e=>rowHTML(e)).join("")||emptyHTML("Nothing here.")}</div></div>
+   ${M.lane==="delegate"&&list.length?`<div class="fld"><span class="lbl">Forward to</span>${list.map(e=>{const to=(M.to||{})[e.id]??(isEmail(e._c.delegate)?e._c.delegate:"");return `<div style="display:flex;gap:8px;align-items:center"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${esc(e.subject)}</span><input class="in" style="max-width:240px" data-dto="${e.id}" value="${esc(to)}" placeholder="${esc(e._c.delegate||"colleague")}'s email" aria-label="Forward to"></div>`;}).join("")}</div>`:""}`;
+  foot=`<button class="btn sm" data-a="closemodal">Close</button>${M.lane==="letgo"&&list.length?`<button class="btn pri sm" data-a="doletgo">Let go of ${list.length}</button>`:""}${M.lane==="delegate"&&list.length?`<button class="btn pri sm" data-a="dodelegateall">Forward ${list.length}</button>`:""}`;}
+ else if(M.t==="weights"){title="Weights";const w=S.set.w;
+  h=`${presetSeg(w)}${sliders(w)}<p class="note" id="wprev">${prefPreview()}</p>`;
+  foot=`<a class="btn sm" href="#/priorities">All priorities</a><button class="btn pri sm" data-a="closemodal">Done</button>`;}
+ else if(M.t==="newagent"){title="New agent";
+  h=`<div class="fld"><label class="lbl" for="na-name">Name</label><input class="in" id="na-name" value="${esc(M.name||"")}" placeholder="e.g. Invoice filer"></div>
+   <div class="fld"><span class="lbl">Start from</span><div class="lst">${[["blank","Blank rule","Pick a scope and one action, no AI"],["Meeting replies","Meeting replies","Drafts replies with times from your availability"],["Supplier invoices","Supplier invoices","Files invoices, pins big or overdue ones"],["VIP watcher","VIP watcher","Pins anything your VIPs ask you"]].map(([k,n,d])=>`<label class="li" style="cursor:pointer"><input type="radio" name="na-t" value="${esc(k)}" ${(M.tpl||"blank")===k?"checked":""} style="accent-color:var(--accent)"><span class="grow"><div>${n}</div><div class="s2">${d}</div></span></label>`).join("")}</div></div>`;
+  foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="createagent">Create</button>`;}
+ else if(M.t==="deleteme"){title="Delete your Workbench data?";h=`<p class="muted">This disconnects every mailbox and permanently deletes all mail, scores, settings, agents and history Workbench stored. Your mailboxes themselves aren't affected. This can't be undone.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm redfill" data-a="dodeleteme">Delete everything</button>`;}
+ else if(M.t==="disconnect"){const a=accById(M.id);title=`Disconnect ${a?a.email:"this mailbox"}?`;h=`<p class="muted">Workbench stops reading this mailbox and deletes everything it synced from it. Your mail itself isn't touched. To revoke access fully, also remove Workbench in your ${a&&a.provider==="microsoft"?"Microsoft":"Google"} account's security settings.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm redfill" data-a="dodisconnect" data-id="${M.id}">Disconnect</button>`;}
+ else if(M.t==="delagent"){const a=agentById(M.id);title=`Delete ${a?a.name:"agent"}?`;h=`<p class="muted">Its pending suggestions are removed. Its past actions stay in Activity.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm redfill" data-a="dodelagent" data-id="${M.id}">Delete agent</button>`;}
+ o.insertAdjacentHTML("beforeend",`<div class="scrim m" data-a="closemodal"></div><div class="modal${wide?" wide":""}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="mo-h"><h2>${esc(title)}</h2><button class="ib" data-a="closemodal" aria-label="Close">${ic("x")}</button></div><div class="mo-b">${h}</div><div class="mo-f">${foot}</div></div>`);
+ restoreFocus(keep);
+}
 const pop=document.getElementById("pop");let popKey=null;
 function openPop(anchor,html,key){
  if(popKey===key&&!pop.hidden){closePop();return;}
  popKey=key;pop.innerHTML=html;pop.hidden=false;
  const r=anchor.getBoundingClientRect();const pw=pop.offsetWidth,ph=pop.offsetHeight;
- let left=Math.min(window.innerWidth-pw-12,Math.max(12,r.right-pw));if(r.left+pw<window.innerWidth-12&&r.left<window.innerWidth/2)left=Math.max(12,r.left);
+ let left=r.left<window.innerWidth/2?r.left:r.right-pw;left=Math.min(window.innerWidth-pw-12,Math.max(12,left));
  let top=r.bottom+8;if(top+ph>window.innerHeight-12)top=Math.max(12,r.top-ph-8);
  pop.style.left=left+"px";pop.style.top=top+"px";
 }
-function closePop(){pop.hidden=true;popKey=null;}
-function queueItems(){return S.queue.map(q=>({q,e:byId(q.emailId),a:S.set.agents.find(x=>x.id===q.agentId)})).filter(x=>x.e&&x.a&&OPEN(x.e));}
+function closePop(){if(pop){pop.hidden=true;popKey=null;}}
+function queueItems(){return S.queue.map(q=>({q,e:byId(q.emailId),a:agentById(q.agentId)})).filter(x=>x.e&&x.a&&OPEN(x.e));}
 function popQueue(){
  const items=queueItems();
- return `<div style="display:flex;align-items:center"><h3>Agent suggestions</h3>${items.length?`<button class="btn link sm" style="margin-left:auto" data-a="approveall">Approve all</button>`:""}</div>
-  ${items.length?`<div class="list">${items.map(({q,e,a})=>`<div class="li" style="align-items:flex-start"><div class="grow"><div><b>${esc(a.name)}</b> <span class="muted">· ${esc({letgo:"let go",done:"mark done",pin:"pin",reply:"save a draft reply",send:"send a reply",project:"file under "+a.param,delegate:"forward to "+a.param}[a.action])}</span></div><div class="s2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.subject)}</div>
-   <div style="display:flex;gap:4px;margin-top:6px"><button class="btn pri sm" data-a="approve" data-id="${q.id}">Approve</button><button class="btn sm" data-a="open" data-id="${e.id}">View</button><button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button></div></div></div>`).join("")}</div>`:`<p class="muted" style="margin:0">Nothing to review. Agents set to “Ask me first” put their suggestions here.</p>`}`;
-}
-function popActivity(){
- const L=S.log.slice(0,25);
- return `<h3>Activity</h3>${L.length?`<div class="list">${L.map(l=>`<div class="li"${l.undone?' style="opacity:.5"':""}><div class="grow"><div style="font-size:13.5px">${esc(l.text)}</div><div class="s2">${esc(l.actor)} · ${when(l.t)}${l.undone?" · undone":""}</div></div>${l.undone||!l.undoable?"":`<button class="btn sm" data-a="undo" data-id="${l.id}">Undo</button>`}</div>`).join("")}</div>`:`<p class="muted" style="margin:0">No actions yet. Everything you and your agents do shows up here, with undo where possible.</p>`}`;
+ return `<div style="display:flex;align-items:center"><h3>Agent approvals</h3>${items.length?`<button class="btn link sm" style="margin-left:auto" data-a="approveall">Approve all</button>`:""}</div>
+  ${items.length?items.slice(0,8).map(({q,e,a})=>`<div class="qitem"><div style="font-size:13px"><b>${esc(a.name)}</b> <span class="muted">· ${esc(ACT_L[q.action||a.action]||"")}</span></div><div style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.subject)}</div>${q.reason?`<div class="r">${esc(q.reason)}</div>`:""}<div style="display:flex;gap:4px"><button class="btn pri sm" data-a="approve" data-id="${q.id}">Approve</button><button class="btn sm" data-a="openmail" data-id="${e.id}">View</button><button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button></div></div>`).join("")+(items.length>8?`<a class="btn sm" href="#/agents">See all ${items.length}</a>`:""):`<p class="muted">Nothing to review.</p>`}`;
 }
 function popSender(name){
  const n=senders()[name]||0;const r=(S.set.rules||[]).find(x=>x.field==="sender"&&x.value.toLowerCase()===name.toLowerCase());
  const e=S.emails.find(x=>dispName(x)===name);
- return `<div style="display:flex;gap:10px;align-items:center"><div class="av" style="background:${avColor(name)}">${esc(initials(name))}</div><div><h3>${esc(name)}</h3><div class="note">${esc(e?e.fromEmail:"")}</div></div></div>
+ return `<div style="display:flex;gap:10px;align-items:center"><div class="av" style="background:${avColor(name)}">${esc(initials(name))}</div><div style="min-width:0"><h3>${esc(name)}</h3><div class="note" style="overflow:hidden;text-overflow:ellipsis">${esc(e?e.fromEmail:"")}</div></div></div>
   <div class="note num">${n} email${n===1?"":"s"} in Workbench</div>
   <div class="fld"><span class="lbl">Weight</span><div class="seg">${[["down","Lower"],["none","Normal"],["up","Higher"],["urgent","Urgent"]].map(([k,v])=>`<button data-a="sweight" data-v="${k}" data-n="${esc(name)}" aria-pressed="${(r?{cap:"down",mul:"up",urg:"urgent"}[r.effect]:"none")===k}">${v}</button>`).join("")}</div></div>
-  <button class="btn sm" data-a="fsender" data-v="${esc(name)}">Show all from ${esc(firstName(name))}</button>`;
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="fsender" data-v="${esc(name)}">Show all from ${esc(firstName(name))}</button>${e?`<button class="btn sm" data-a="composeto" data-v="${esc(e.fromEmail)}">${ic("pen")}Email</button>`:""}</div>`;
 }
-function popBudget(){return `<h3>Time for email today</h3><p class="note" style="margin:0">Today only holds what fits. Urgent emails that don't fit move to Plan.</p><div class="seg">${[30,60,90,120,180,240].map(m=>`<button data-a="setbudget" data-v="${m}" aria-pressed="${S.set.budget===m}">${fmtMin(m)}</button>`).join("")}</div>`;}
-function popDelegate(e){const sug=score(e).delegate||"";return `<h3>Forward</h3><p class="note" style="margin:0">Forwards with a short note, then archives it. This can't be undone.</p><input class="in" id="delname" type="email" placeholder="colleague@company.com" value="${esc(isEmail(sug)?sug:"")}"><textarea id="delnote" style="min-height:64px">Could you take this one, please? Thanks.</textarea><button class="btn pri sm" data-a="dodelegate1" data-id="${e.id}">Forward</button>`;}
-function popAccount(){
- return `<h3>${esc(S.user?S.user.email:"")}</h3>
-  <div class="list">${S.accounts.map(a=>`<div class="li"><span class="acct grow"><span class="pv" style="background:${(PV[a.provider]||PV.google).c}">${(PV[a.provider]||PV.google).l}</span><span><div>${esc(a.email)}</div><div class="s2">${a.error?"Reconnect needed":a.lastSync?"Synced "+when(a.lastSync):"Not synced yet"}</div></span></span>${live()?`<button class="btn sm" data-a="disconnect" data-id="${a.id}">Disconnect</button>`:""}</div>`).join("")||`<div class="li note">No mailboxes connected.</div>`}</div>
-  ${live()?`<div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn sm" href="/api/auth/google/start">${ic("plus")}Gmail</a><a class="btn sm" href="/api/auth/microsoft/start">${ic("plus")}Outlook</a><button class="btn sm" data-a="sync" ${S.syncing?"disabled":""}>${ic("sync")}Check mail</button></div>
-   <div style="display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px"><button class="btn sm" data-a="logout">Sign out</button><button class="btn sm danger" data-a="deleteme">Delete my data</button><a class="btn link sm" href="/privacy">Privacy</a></div>`
-  :`<button class="btn pri sm" data-a="exitdemo">Connect a real inbox</button>`}`;
-}
+function popBudget(){return `<h3>Time for email today</h3><p class="note">Today only holds what fits. Urgent email that doesn't fit moves to Plan.</p><div class="seg">${[30,60,90,120,180,240].map(m=>`<button data-a="setbudget" data-v="${m}" aria-pressed="${S.set.budget===m}">${fmtMin(m)}</button>`).join("")}</div>`;}
+function popDelegate(e){const sug=score(e).delegate||"";return `<h3>Forward</h3><p class="note">Forwards with a note, then archives it. This can't be undone.</p><input class="in" id="delname" type="email" placeholder="colleague@company.com" value="${esc(isEmail(sug)?sug:"")}"><textarea id="delnote" style="min-height:64px">Could you take this one, please? Thanks.</textarea><button class="btn pri sm" data-a="dodelegate1" data-id="${e.id}">Forward</button>`;}
 
-/* ---- tooltip + toast ---- */
 const tip=document.getElementById("tip");
 function tipFor(key){
  if(key.startsWith("score:")){const e=byId(key.slice(6));if(!e)return "";const c=score(e);
   const b=(l,v)=>`<div class="tb"><span>${l}</span><span class="tt"><i style="width:${v*10}%"></i></span><span class="num">${v.toFixed(0)}</span></div>`;
   const why=[...(c.a.reasons||[]),...c.applied.map(r=>r.label)].slice(0,4);
-  return `<b>Score ${c.s.toFixed(1)}</b> · ${LANE[e._lane]||""}${b("Urgency",c.U)}${b("Importance",c.I)}${b("Effort",c.E)}${why.length?`<div style="margin-top:5px;opacity:.85">${why.map(esc).join(" · ")}</div>`:""}${e._over?`<div style="margin-top:4px;opacity:.85">Urgent, but doesn't fit today's time</div>`:""}${e.by!=="ai"&&live()&&S.ai.enabled?`<div style="margin-top:4px;opacity:.7">Basic score until Claude sorts it</div>`:""}`;}
+  return `<b>Score ${c.s.toFixed(1)}</b> · ${LANE[laneOf(e)]||""}${b("Urgency",c.U)}${b("Importance",c.I)}${b("Effort",c.E)}${why.length?`<div style="margin-top:5px;opacity:.85">${why.map(esc).join(" · ")}</div>`:""}${e._over?`<div style="margin-top:4px;opacity:.85">Urgent, but doesn't fit today's time</div>`:""}${e.by!=="ai"&&live()&&S.ai.enabled?`<div style="margin-top:4px;opacity:.7">Basic score until Claude sorts it</div>`:""}`;}
  if(key.startsWith("sender:")){const n=key.slice(7);const c=senders()[n]||0;const r=(S.set.rules||[]).find(x=>x.field==="sender"&&n.toLowerCase().includes(x.value.toLowerCase()));return `${esc(n)} · ${c} email${c===1?"":"s"}${r?"<br>"+esc(r.label):""}<br><span style="opacity:.7">Click to adjust weight</span>`;}
+ if(key.startsWith("list:")){const es=key.slice(5).split(",").map(byId).filter(Boolean);return es.length?`<ul>${es.map(e=>`<li>${esc(e.subject)}</li>`).join("")}</ul>`:"";}
+ if(key.startsWith("acct:")){const a=accById(key.slice(5));if(!a)return "";const cnt=S.emails.filter(e=>e.accountId===a.id&&OPEN(e)).length;return `<b>${esc(a.email)}</b><br>${pv(a.provider).n} · ${a.error?"Reconnect needed":a.lastSync?"Synced "+esc(fullDate(a.lastSync)):"Not synced yet"}<br>${cnt} open emails`;}
+ if(key==="queue:"){return `<ul>${queueItems().slice(0,5).map(({q,e,a})=>`<li>${esc(a.name)}: ${esc(ACT_L[q.action||a.action]||"")} · ${esc(e.subject)}</li>`).join("")}</ul>`;}
+ if(key==="agentlog:"){return `<ul>${S.log.filter(l=>l.agentId&&isToday(l.t)).slice(0,5).map(l=>`<li>${esc(l.text)}</li>`).join("")}</ul>`;}
  return esc(key);
 }
 if(matchMedia("(hover:hover)").matches){
  document.addEventListener("mouseover",ev=>{const t=ev.target.closest("[data-tip]");if(!t){tip.hidden=true;return;}
-  tip.innerHTML=tipFor(t.dataset.tip);if(!tip.innerHTML){tip.hidden=true;return;}tip.hidden=false;
+  const html=tipFor(t.dataset.tip);if(!html){tip.hidden=true;return;}tip.innerHTML=html;tip.hidden=false;
   const r=t.getBoundingClientRect();const w=tip.offsetWidth,h=tip.offsetHeight;
   const left=Math.min(window.innerWidth-w-10,Math.max(10,r.left+r.width/2-w/2));let top=r.top-h-8;if(top<10)top=r.bottom+8;
   tip.style.left=left+"px";tip.style.top=top+"px";});
- document.addEventListener("scroll",()=>tip.hidden=true,true);
+ document.addEventListener("scroll",()=>{tip.hidden=true;},true);
 }
 let toastT;function toast(msg,undoId){const t=document.getElementById("toast");t.innerHTML=`<span>${esc(msg)}</span>${undoId?`<button data-a="undo" data-id="${undoId}">Undo</button>`:""}`;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,5000);}
+function afterRender(v){if(v==="inbox"&&S.box.sel){const e=byId(S.box.sel);if(e&&!S.box.orig[e.id])loadOriginal(e);}}
 
-/* ============ events ============ */
-function readAgentForm(){const M=S.modal;if(!M||M.t!=="agent")return;const b=M.a,g=id=>document.getElementById(id);
- if(g("g-name"))b.name=g("g-name").value;if(g("g-val"))b.value=g("g-val").value;if(g("g-max"))b.maxI=g("g-max").value===""?null:Number(g("g-max").value);if(g("g-param"))b.param=g("g-param").value;if(g("g-desc"))M.desc=g("g-desc").value;}
+/* ================= events ================= */
 const draftOf=id=>{const ta=document.getElementById("draft");return ta&&ta.dataset.id===id?ta.value:(S.drafts[id]??(byId(id)||{}).draft??"");};
-function closeSheetIf(id){if(S.sheet===id){S.sheet=null;S.confirmSend=null;}}
-document.addEventListener("click",async ev=>{
+function openMail(id,reply){S.sheet=null;S.box.filter=null;const e=byId(id);if(e)S.box.folder=OPEN(e)||e.status==="ready"?"inbox":"done";
+ S.box.compose=reply?{id,mode:"reply"}:(S.box.compose&&S.box.compose.id===id?S.box.compose:null);S.confirmSend=null;go("inbox",id);}
+function setAgent(id,patch){const a=agentById(id);if(!a)return;Object.assign(a,patch);saveSet();}
+async function onClick(ev){
  const t=ev.target.closest("[data-a]");
- if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","activity","sender","budget","delegate","account"].includes(t.dataset.a)))closePop();
+ if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","sender","budget","delegate"].includes(t.dataset.a)))closePop();
  if(!t||t.disabled)return;const a=t.dataset.a,id=t.dataset.id,v=t.dataset.v;
  const one=async(op,param)=>{const en=await act([id],op,param);if(en)toast(en.text,en.undoable?en.id:null);};
  switch(a){
-  case "demo":startDemo();break;
-  case "exitdemo":location.href="/";break;
-  case "open":closePop();S.sheet=id;S.sheetWhy=false;S.sheetFull=false;S.confirmSend=null;renderSheet();const e0=byId(id);if(e0)loadBody(e0);break;
-  case "closesheet":S.sheet=null;S.confirmSend=null;renderSheet();break;
-  case "why":S.sheetWhy=!S.sheetWhy;renderSheet();break;
+  case "demo":ev.preventDefault();startDemo();break;
+  case "exitdemo":location.hash="#/signup";location.reload();break;
+  case "open":closePop();S.sheet=id;S.sheetFull=false;renderSheet();break;
+  case "closesheet":S.sheet=null;renderSheet();break;
   case "full":S.sheetFull=!S.sheetFull;renderSheet();break;
-  case "q-done":case "s-done":closeSheetIf(id);await one("done");break;
-  case "q-letgo":case "s-letgo":closeSheetIf(id);await one("letgo");break;
+  case "openmail":closePop();S.modal=null;openMail(id,v==="reply");break;
+  case "selmail":S.box.compose=null;S.confirmSend=null;go("inbox",id);break;
+  case "closemail":go("inbox");break;
+  case "folder":S.box.folder=v;go("inbox");break;
+  case "clearboxfilter":S.box.filter=null;render();break;
+  case "toggleplain":S.box.plain=!S.box.plain;render();break;
+  case "toggleimages":S.box.images=!S.box.images;render();break;
+  case "q-done":case "s-done":if(a==="s-done"){S.sheet=null;}await one("done");break;
+  case "q-letgo":case "s-letgo":if(a==="s-letgo"){S.sheet=null;}await one("letgo");break;
   case "q-pin":case "s-pin":await one("pin");break;
   case "reopen":await one("reopen");break;
-  case "send":S.drafts[id]=draftOf(id);S.confirmSend=id;renderSheet();break;
-  case "cancelsend":S.confirmSend=null;renderSheet();break;
-  case "dosend":{const txt=draftOf(id);if(!txt.trim())return;S.confirmSend=null;const en=await act([id],"send",txt);if(en){toast(en.text);closeSheetIf(id);delete S.drafts[id];}render();break;}
-  case "savedraft":{const txt=draftOf(id);if(!txt.trim())return;const en=await act([id],"reply",txt);if(en){toast(live()?"Draft saved in your mailbox":"Draft saved",en.id);delete S.drafts[id];}break;}
+  case "reply":if(S.route.view!=="inbox"){openMail(id,true);break;}S.box.compose={id,mode:"reply"};S.confirmSend=null;render();setTimeout(()=>{const ta=document.getElementById("draft");if(ta)ta.focus();},0);break;
+  case "forward":{const e=byId(id);const d=score(e).delegate;S.box.compose={id,mode:"forward",to:isEmail(d)?d:"",note:"Could you take this one, please? Thanks."};S.confirmSend=null;render();break;}
+  case "closecompose":S.box.compose=null;S.confirmSend=null;render();break;
+  case "send":{const c=S.box.compose;
+   if(c&&c.mode==="forward"){c.to=((document.getElementById("fwdto")||{}).value||"").trim();c.note=(document.getElementById("fwdnote")||{}).value||"";if(!isEmail(c.to)){toast("Enter your colleague's email address");return;}}
+   else{S.drafts[id]=draftOf(id);if(!S.drafts[id].trim()){toast("Write a reply first");return;}}
+   S.confirmSend=id;render();break;}
+  case "cancelsend":S.confirmSend=null;render();break;
+  case "dosend":{const c=S.box.compose;S.confirmSend=null;let en;
+   if(c&&c.mode==="forward")en=await act([id],"delegate",c.to,{text:c.note});else en=await act([id],"send",S.drafts[id]||draftOf(id));
+   if(en){toast(en.text);S.box.compose=null;delete S.drafts[id];}render();break;}
+  case "savedraft":{const txt=draftOf(id);if(!txt.trim())return;const en=await act([id],"reply",txt);if(en){toast(live()?"Draft saved in your mailbox":"Draft saved",en.id);delete S.drafts[id];S.box.compose=null;render();}break;}
   case "draft":S.drafts[id]=draftOf(id);aiDraft(byId(id));break;
-  case "delegate":openPop(t,popDelegate(byId(id)),"del"+id);setTimeout(()=>{const i=document.getElementById("delname");i&&i.focus();},0);break;
-  case "dodelegate1":{const to=document.getElementById("delname").value.trim();const note=document.getElementById("delnote").value;if(!isEmail(to)){toast("Enter your colleague's email address");return;}closePop();closeSheetIf(id);const en=await act([id],"delegate",to,"You",note);if(en)toast(en.text);break;}
+  case "delegate":openPop(t,popDelegate(byId(id)),"del"+id);setTimeout(()=>{const i=document.getElementById("delname");if(i)i.focus();},0);break;
+  case "dodelegate1":{const to=document.getElementById("delname").value.trim();const note=document.getElementById("delnote").value;if(!isEmail(to)){toast("Enter your colleague's email address");return;}closePop();S.sheet=null;const en=await act([id],"delegate",to,{text:note});if(en)toast(en.text);break;}
   case "weight":case "sweight":{const name=a==="weight"?dispName(byId(id)):t.dataset.n;
    S.set.rules=(S.set.rules||[]).filter(r=>!(r.field==="sender"&&r.value.toLowerCase()===name.toLowerCase()));
    if(v!=="none")S.set.rules.push({id:uid(),field:"sender",value:name,effect:v==="up"?"mul":v==="down"?"cap":"urg",amount:v==="up"?1.5:2,label:`${name}: ${v==="up"?"more important":v==="down"?"less important":"more urgent"}`});
    saveSet();toast(v==="none"?`${name} back to normal weight`:`${name}: ${v==="up"?"more important":v==="down"?"less important":"more urgent"}. Ranking updated.`);
    render();if(a==="sweight")pop.innerHTML=popSender(name);break;}
   case "sender":ev.stopPropagation();openPop(t,popSender(v),"snd"+v);break;
-  case "fsender":closePop();S.filter={kind:"sender",v};S.sheet=null;S.view="home";render();break;
-  case "project":S.filter={kind:"project",v};S.sheet=null;S.view="home";render();window.scrollTo({top:0});break;
-  case "flag":S.filter={kind:v};render();break;
-  case "clearfilter":S.filter=null;S.q="";S.searching=false;render();break;
-  case "search":S.searching=true;S.view="home";render();break;
-  case "toggle":S.open[v]=!S.open[v];renderHome();break;
-  case "showall":S.showAll[v]=true;renderHome();break;
+  case "fsender":closePop();S.box.filter={kind:"sender",v};S.box.folder="inbox";go("inbox");break;
+  case "project":S.box.filter={kind:"project",v};S.box.folder="inbox";S.sheet=null;S.modal=null;go("inbox");break;
+  case "filter":S.box.filter={kind:v};S.box.folder="inbox";go("inbox");break;
+  case "scrollto":{const el=document.getElementById(v);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});break;}
+  case "nav":go(v);break;
+  case "lane":S.modal={t:"lane",lane:v,to:{}};renderModal();break;
   case "budget":openPop(t,popBudget(),"budget");break;
   case "setbudget":S.set.budget=Number(v);saveSet();closePop();render();break;
   case "context":S.modal={t:"context"};renderModal();break;
-  case "applyctx":{const txt=document.getElementById("ctx").value;S.set.context=txt;S.modal={t:"context",text:txt,busy:true};renderModal();
-   const rules=txt.trim()?await contextRules(txt):[];S.set.ctx=rules;saveSet();S.modal={t:"context",text:txt};toast(rules.length?`${rules.length} rule${rules.length>1?"s":""} from your context`:"No rules found. Try naming a project or person.");render();break;}
+  case "weights":S.modal={t:"weights"};renderModal();break;
+  case "applyctx":{const txt=document.getElementById("ctx").value;S.set.context=txt;S.ctxBusy=true;render();
+   const rules=txt.trim()?await contextRules(txt):[];S.set.ctx=rules;S.ctxBusy=false;saveSet();toast(rules.length?`${rules.length} rule${rules.length>1?"s":""} from your context`:"No rules found. Try naming a project or person.");render();break;}
   case "rmctx":S.set.ctx=S.set.ctx.filter(r=>r.id!==id);saveSet();render();break;
-  case "letgoall":S.modal={t:"letgo"};renderModal();break;
-  case "doletgo":{const ids=compute().lanes.letgo.map(e=>e.id);S.modal=null;renderModal();const en=await act(ids,"letgo");if(en)toast(en.text,en.id);break;}
-  case "delegateall":S.modal={t:"delegateall",to:{}};renderModal();break;
+  case "doletgo":{const ids=compute().lanes.letgo.map(e=>e.id);S.modal=null;const en=await act(ids,"letgo");if(en)toast(en.text,en.id);break;}
   case "dodelegateall":{const list=compute().lanes.delegate;const groups={};const missing=[];
    list.forEach(e=>{const inp=document.querySelector(`[data-dto="${CSS.escape(e.id)}"]`);const to=(inp?inp.value:"").trim();if(isEmail(to))(groups[to]=groups[to]||[]).push(e.id);else missing.push(e);});
    if(missing.length){toast("Add an email address for each one");return;}
-   S.modal=null;renderModal();let n=0;for(const [to,ids] of Object.entries(groups)){const en=await act(ids,"delegate",to);if(en)n+=ids.length;}if(n)toast(`Forwarded ${n} email${n>1?"s":""}`);break;}
-  case "prefs":S.modal={t:"prefs"};renderModal();break;
+   S.modal=null;let n=0;for(const [to,ids] of Object.entries(groups)){const en=await act(ids,"delegate",to,{noRender:true});if(en)n+=ids.length;}render();if(n)toast(`Forwarded ${n} email${n>1?"s":""}`);break;}
   case "preset":{const p=PRESETS[v];S.set.w={u:p[1],i:p[2],e:p[3]};saveSet();render();break;}
   case "addrule":{const who=document.getElementById("r-who").value.trim();if(!who)return;const [eff,n]=document.getElementById("r-eff").value.split("|");
    S.set.rules=(S.set.rules||[]).concat([{id:uid(),field:"sender",value:who,effect:eff,amount:Number(n),label:`${who}: ${eff==="mul"?"more important":eff==="urg"?"more urgent":"less important"}`}]);saveSet();render();break;}
   case "rmrule":S.set.rules=S.set.rules.filter(r=>r.id!==id);saveSet();render();break;
-  case "saveprefs":{const ab=document.getElementById("about");if(ab)S.set.about=ab.value;saveSet();S.modal=null;render();break;}
   case "closemodal":S.modal=null;renderModal();break;
   case "queue":openPop(t,popQueue(),"queue");break;
-  case "activity":openPop(t,popActivity(),"activity");break;
-  case "account":openPop(t,popAccount(),"account");break;
   case "sync":closePop();sync(true);break;
   case "undo":document.getElementById("toast").hidden=true;await undo(id);break;
-  case "approve":case "dismiss":{const q=S.queue.find(x=>x.id===id);S.queue=S.queue.filter(x=>x.id!==id);saveQueue([], [id]);
-   if(q&&a==="approve"){const ag=S.set.agents.find(x=>x.id===q.agentId);if(ag){const en=await act([q.emailId],ag.action,ag.param,ag.name+" (approved)");if(en)toast(en.text,en.undoable?en.id:null);}}
-   render();if(!pop.hidden)pop.innerHTML=popQueue();break;}
-  case "approveall":{const items=queueItems();S.queue=[];saveQueue([],[],true);closePop();
-   const groups={};items.forEach(({q,a:ag})=>{(groups[ag.id]=groups[ag.id]||{ag,ids:[]}).ids.push(q.emailId);});
-   let n=0;for(const {ag,ids} of Object.values(groups)){const en=await act(ids,ag.action,ag.param,ag.name+" (approved)");if(en)n+=ids.length;}
+  case "approve":{const q=S.queue.find(x=>x.id===id);if(q)await approve(q);if(!pop.hidden)pop.innerHTML=popQueue();render();break;}
+  case "dismiss":S.queue=S.queue.filter(x=>x.id!==id);saveQueue([], [id]);if(!pop.hidden)pop.innerHTML=popQueue();render();break;
+  case "approveall":case "approveagent":{const items=queueItems().filter(x=>a==="approveall"||x.a.id===id);closePop();
+   const ids=new Set(items.map(x=>x.q.id));S.queue=S.queue.filter(x=>!ids.has(x.id));saveQueue([],[...ids]);let n=0;
+   for(const {q,a:ag} of items){const en=await act([q.emailId],q.action||ag.action,q.param!=null?q.param:ag.param,{actor:ag.name+" (approved)",agentId:ag.id,reason:q.reason,noRender:true});if(en)n++;}
    toast(`Approved ${n} suggestion${n===1?"":"s"}`);render();break;}
-  case "agents":closePop();S.view="agents";S.sheet=null;render();window.scrollTo({top:0});break;
-  case "home":S.view="home";render();break;
-  case "toggleagent":{const ag=S.set.agents.find(x=>x.id===id);ag.on=!ag.on;saveSet();render();break;}
-  case "runagent":{const ag=S.set.agents.find(x=>x.id===id);const others=S.set.agents.filter(x=>x!==ag&&x.on);others.forEach(x=>x.on=false);const was=ag.on;ag.on=true;try{await runAgents(S.emails.filter(OPEN),true);}finally{others.forEach(x=>x.on=true);ag.on=was;}render();break;}
-  case "runall":await runAgents(S.emails.filter(OPEN),true);break;
-  case "newagent":S.modal={t:"agent",a:{id:uid(),name:"",field:"type",value:"notification",maxI:null,action:"letgo",param:"",mode:"ask",on:true}};renderModal();break;
-  case "editagent":S.modal={t:"agent",edit:true,a:JSON.parse(JSON.stringify(S.set.agents.find(x=>x.id===id)))};renderModal();break;
-  case "gmode":readAgentForm();S.modal.a.mode=v;renderModal();break;
-  case "buildagent":{readAgentForm();const d=S.modal.desc;if(!d)return;S.modal.busy=true;renderModal();
-   try{const r=(await api("/api/agents/build",{desc:d,projects:projects()})).agent||{};
-    Object.assign(S.modal.a,{name:String(r.name||"New agent").slice(0,40),field:["sender","project","subject","type","any"].includes(r.field)?r.field:"any",value:String(r.value||""),maxI:r.maxImportance==null?null:clamp(r.maxImportance),action:["letgo","done","pin","reply","send","project","delegate"].includes(r.action)?r.action:"letgo",param:String(r.param||""),mode:r.mode==="auto"?"auto":"ask"});}
-   catch(err){toast(err.message);}S.modal.busy=false;renderModal();break;}
-  case "saveagent":{readAgentForm();const b=S.modal.a;if(!b.value){toast("Add a value for “When”");return;}if(!b.name)b.name="New agent";
-   const i=S.set.agents.findIndex(x=>x.id===b.id);if(i>=0)S.set.agents[i]=b;else S.set.agents.push(b);saveSet();S.modal=null;toast(`Agent “${b.name}” saved`);render();break;}
-  case "delagent":S.set.agents=S.set.agents.filter(x=>x.id!==S.modal.a.id);saveSet();S.modal=null;render();break;
-  case "disconnect":closePop();S.modal={t:"disconnect",id};renderModal();break;
-  case "dodisconnect":try{await api(`/api/accounts/${encodeURIComponent(id)}`,null,"DELETE");S.modal=null;toast("Mailbox disconnected");const st=await api("/api/state");applyState(st);}catch(err){toast(err.message);}render();break;
-  case "deleteme":closePop();S.modal={t:"deleteme"};renderModal();break;
-  case "dodeleteme":try{await api("/api/me",null,"DELETE");location.href="/";}catch(err){toast(err.message);}break;
-  case "logout":await api("/api/auth/logout",{}).catch(()=>{});location.href="/";break;
+  case "toggleagent":{const ag=agentById(id);setAgent(id,{on:!ag.on});render();break;}
+  case "agmode":setAgent(id,{mode:v});render();break;
+  case "agcolor":setAgent(id,{color:v});render();break;
+  case "runagent":await runAgents(S.emails.filter(OPEN),{manual:true,only:id});break;
+  case "testagent":{const ag=agentById(id);S.tests[id]={busy:true};render();try{S.tests[id]={res:await decide(ag,agentMatches(ag))};}catch(err){S.tests[id]=null;toast(err.message);}render();break;}
+  case "instemplate":{const tp=TEMPLATES[v];if(tp){setAgent(id,{instructions:tp.instructions,allowed:tp.allowed});render();toast("Example instructions added. Edit them to fit.");}break;}
+  case "newagent":S.modal={t:"newagent"};renderModal();setTimeout(()=>{const i=document.getElementById("na-name");if(i)i.focus();},0);break;
+  case "createagent":{const name=document.getElementById("na-name").value.trim();const tpl=(document.querySelector('input[name="na-t"]:checked')||{}).value||"blank";
+   const ag=newAgent(Object.assign({name:name||(tpl==="blank"?"New agent":tpl)},TEMPLATES[tpl]||{}));
+   if(tpl==="Meeting replies")ag.context="My availability: Tuesday and Thursday afternoons, 14:00 to 17:00 UK time.";
+   if(tpl==="VIP watcher")ag.context="VIPs: (add names or email addresses here)";
+   S.set.agents.push(ag);saveSet();S.modal=null;go("agents",ag.id,tpl==="blank"?"settings":"instructions");toast(`Created “${ag.name}”`);break;}
+  case "delagent":S.modal={t:"delagent",id};renderModal();break;
+  case "dodelagent":{S.set.agents=S.set.agents.filter(x=>x.id!==id);const rm=S.queue.filter(q=>q.agentId===id).map(q=>q.id);S.queue=S.queue.filter(q=>q.agentId!==id);saveQueue([],rm);saveSet();S.modal=null;go("agents");break;}
+  case "actfilter":S.actFilter=v;render();break;
+  case "compose":S.modal={t:"compose",from:S.box.account!=="all"?S.box.account:(S.accounts[0]||{}).id};renderModal();break;
+  case "composeto":closePop();S.modal={t:"compose",from:(S.accounts[0]||{}).id,to:v};renderModal();break;
+  case "c-send":case "c-draft":{const M=S.modal;readCompose();
+   if(!M.to||!M.to.split(/[,;\s]+/).filter(Boolean).every(isEmail)){toast("Check the To addresses");return;}
+   if(a==="c-send"){M.confirm=true;renderModal();break;}
+   await doCompose("draft");break;}
+  case "c-cancelsend":S.modal.confirm=false;renderModal();break;
+  case "c-dosend":await doCompose("send");break;
+  case "disconnect":S.modal={t:"disconnect",id};renderModal();break;
+  case "dodisconnect":try{await api(`/api/accounts/${encodeURIComponent(id)}`,null,"DELETE");S.modal=null;toast("Mailbox disconnected");applyState(await api("/api/state"));}catch(err){toast(err.message);}render();break;
+  case "deleteme":S.modal={t:"deleteme"};renderModal();break;
+  case "dodeleteme":try{await api("/api/me",null,"DELETE");location.hash="#/signup";location.reload();}catch(err){toast(err.message);}break;
+  case "logout":await api("/api/auth/logout",{}).catch(()=>{});location.hash="#/login";location.reload();break;
  }
+}
+function readCompose(){const M=S.modal;if(!M||M.t!=="compose")return;const g=id=>(document.getElementById(id)||{}).value;M.from=g("c-from")||M.from;M.to=(g("c-to")||"").trim();M.cc=(g("c-cc")||"").trim();M.subject=g("c-subj")||"";M.body=g("c-body")||"";}
+async function doCompose(mode){
+ const M=S.modal;M.busy=true;renderModal();
+ if(!live()){S.log.unshift({id:uid(),t:new Date().toISOString(),actor:"You",text:`${mode==="draft"?"Saved a draft":"Sent"} “${M.subject||"(no subject)"}” to ${M.to}`,undoable:false,undone:false});S.modal=null;toast(mode==="draft"?"Draft saved (demo)":"Sent (demo, nothing actually sent)");render();return;}
+ try{const r=await api("/api/compose",{accountId:M.from,to:M.to,cc:M.cc,subject:M.subject,body:M.body,mode});if(r.log)S.log.unshift(r.log);S.modal=null;toast(mode==="draft"?"Draft saved in your mailbox":"Sent");render();}
+ catch(err){M.busy=false;M.confirm=false;renderModal();toast(err.message);}
+}
+document.addEventListener("click",ev=>{onClick(ev);});
+document.addEventListener("submit",async ev=>{
+ if(ev.target.id!=="authform")return;ev.preventDefault();
+ const signup=S.route.view==="signup";const g=id=>(document.getElementById(id)||{}).value||"";
+ const body={name:g("au-name"),email:g("au-email"),password:g("au-pw")};
+ S.authBusy=true;S.authErr="";render();
+ try{await api(signup?"/api/auth/signup":"/api/auth/login",body);S.authBusy=false;await enterApp(signup?"connect":"dashboard");}
+ catch(err){S.authBusy=false;S.authErr=err.message;render();const em=document.getElementById("au-email");if(em)em.value=body.email;const nm=document.getElementById("au-name");if(nm)nm.value=body.name;}
 });
-document.addEventListener("change",ev=>{const t=ev.target;
- if(t.id==="g-field"){readAgentForm();S.modal.a.field=t.value;S.modal.a.value=t.value==="type"?"notification":"";renderModal();}
- else if(t.id==="g-act"){readAgentForm();S.modal.a.action=t.value;S.modal.a.param=t.value==="reply"||t.value==="send"?"Hi {first},\n\nThanks, received. I'll come back to you by the end of the week.\n":"";renderModal();}
- else if(["g-max","g-val","g-param"].includes(t.id)){readAgentForm();renderModal();}
-});
-document.addEventListener("input",ev=>{const t=ev.target;
- if(t.dataset&&t.dataset.w){S.set.w[t.dataset.w]=Number(t.value);document.getElementById("wv-"+t.dataset.w).textContent=t.value;const p=document.getElementById("wprev");if(p)p.innerHTML=prefPreview();saveSet();renderHome();}
- else if(t.id==="draft"){S.drafts[t.dataset.id]=t.value;const dis=!t.value.trim();document.querySelectorAll('[data-a="send"],[data-a="savedraft"]').forEach(b=>b.disabled=dis);}
- else if(t.id==="q"){S.q=t.value;renderHome();}
+const debounced={};function later(k,fn,ms=500){clearTimeout(debounced[k]);debounced[k]=setTimeout(fn,ms);}
+document.addEventListener("input",ev=>{const t=ev.target;const id=t.dataset&&t.dataset.id;
+ if(t.dataset&&t.dataset.w){S.set.w[t.dataset.w]=Number(t.value);const vEl=document.getElementById("wv-"+t.dataset.w);if(vEl)vEl.textContent=t.value;const p=document.getElementById("wprev");if(p)p.innerHTML=prefPreview();saveSet();}
+ else if(t.id==="draft"){S.drafts[id]=t.value;}
+ else if(t.id==="fwdnote"&&S.box.compose)S.box.compose.note=t.value;
+ else if(t.id==="fwdto"&&S.box.compose)S.box.compose.to=t.value;
+ else if(t.id==="mq"){S.box.q=t.value;later("mq",render,200);}
+ else if(t.id==="about"){S.set.about=t.value;saveSet();}
+ else if(t.id==="ag-ins")setAgent(id,{instructions:t.value});
+ else if(t.id==="ag-ctx")setAgent(id,{context:t.value});
+ else if(t.id==="ag-name")setAgent(id,{name:t.value.slice(0,60)||"Agent"});
+ else if(t.id==="ag-param")setAgent(id,{param:t.value});
+ else if(t.id==="ag-val")setAgent(id,{value:t.value});
+ else if(t.id==="ag-max")setAgent(id,{maxI:t.value===""?null:clamp(t.value)});
  else if(t.dataset&&t.dataset.dto&&S.modal)S.modal.to[t.dataset.dto]=t.value;
+ else if(S.modal&&S.modal.t==="compose"&&t.id&&t.id.startsWith("c-"))readCompose();
+ else if(t.id==="na-name"&&S.modal)S.modal.name=t.value;
+});
+document.addEventListener("change",ev=>{const t=ev.target;const id=t.dataset&&t.dataset.id;
+ if(t.id==="macct"){S.box.account=t.value;go("inbox");}
+ else if(t.id==="ag-field"){setAgent(id,{field:t.value,value:t.value==="type"?"notification":""});render();}
+ else if(t.id==="ag-act"){setAgent(id,{action:t.value,param:t.value==="reply"||t.value==="send"?"Hi {first},\n\nThanks, received. I'll come back to you by the end of the week.\n":""});render();}
+ else if(t.id==="ag-val"||t.id==="ag-max"||t.id==="ag-name"||t.id==="ag-ins")render();
+ else if(t.dataset&&t.dataset.allow){const ag=agentById(id);const set=new Set(ag.allowed);t.checked?set.add(t.dataset.allow):set.delete(t.dataset.allow);setAgent(id,{allowed:[...set]});}
+ else if(t.name==="na-t"&&S.modal)S.modal.tpl=t.value;
 });
 document.addEventListener("keydown",ev=>{
- if(ev.key==="Escape"){if(!pop.hidden)closePop();else if(S.modal){S.modal=null;renderModal();}else if(S.sheet){S.sheet=null;S.confirmSend=null;renderSheet();}else if(S.filter||S.q){S.filter=null;S.q="";S.searching=false;render();}}
- if(ev.key==="Enter"&&ev.target.classList&&ev.target.classList.contains("row")){S.sheet=ev.target.dataset.id;renderSheet();const e=byId(S.sheet);if(e)loadBody(e);}
+ if(ev.key==="Escape"){if(!pop.hidden)closePop();else if(S.modal){S.modal=null;renderModal();}else if(S.sheet){S.sheet=null;renderSheet();}else if(S.route.view==="inbox"&&S.box.compose){S.box.compose=null;render();}}
+ if(ev.key==="Enter"&&ev.target.classList&&ev.target.classList.contains("row")){ev.preventDefault();ev.target.click();}
 });
 
-/* ============ boot ============ */
+/* ================= boot ================= */
+async function enterApp(view){
+ const st=await api("/api/state");S.mode="live";applyState(st);
+ const p=new URLSearchParams(location.search);const c=p.get("connected");
+ if(c||p.get("error")){history.replaceState(null,"","/"+(location.hash||""));if(c)setTimeout(()=>toast(`${pv(c).n} connected. Checking mail…`),50);}
+ S.route=parseRoute();
+ if(view)go(view);else if(["login","signup",""].includes(S.route.view))go(S.accounts.length?"dashboard":"connect");else render();
+ sync();
+ if(!window.__wbTimer)window.__wbTimer=setInterval(()=>{if(document.visibilityState==="visible")sync();},5*60*1000);
+}
 async function boot(){
- render();
- try{const st=await api("/api/state");S.mode="live";applyState(st);
-  const p=new URLSearchParams(location.search);if(p.get("connected")){history.replaceState(null,"","/");toast(`${(PV[p.get("connected")]||{}).n||"Mailbox"} connected. Checking mail…`);}
-  render();sync();
-  setInterval(()=>{if(document.visibilityState==="visible")sync();},5*60*1000);
- }catch(err){S.mode="signedout";render();}
+ S.route=parseRoute();render();
+ const p=new URLSearchParams(location.search);
+ try{await enterApp(p.get("connected")?"dashboard":null);}
+ catch(err){S.mode="signedout";if(!["login","signup"].includes(S.route.view))location.hash=p.get("error")?"#/login":"#/login";S.route=parseRoute();render();}
 }
 boot();
 })();

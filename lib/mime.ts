@@ -77,6 +77,10 @@ export function forwardRaw(e: OutEmail, to: string, note: string): string {
   return build({ To: to, Subject: encHeader(subj) }, quoted);
 }
 
+export function newRaw(m: { to: string[]; cc: string[]; subject: string; body: string }): string {
+  return build({ To: m.to.join(", "), Cc: m.cc.join(", "), Subject: encHeader(m.subject) }, m.body);
+}
+
 /** Runs async work over items with a fixed number in flight. */
 export async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> {
   let i = 0;

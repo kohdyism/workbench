@@ -28,4 +28,11 @@ export interface MailProvider {
   draftReply(token: string, t: Target, text: string): Promise<void>;
   sendReply(token: string, t: Target, text: string): Promise<void>;
   forward(token: string, t: Target, to: string, note: string): Promise<void>;
+  /** A new message (not a reply). */
+  sendNew(token: string, m: NewMessage): Promise<void>;
+  draftNew(token: string, m: NewMessage): Promise<void>;
+  /** The message as the sender wrote it, fetched live: HTML when there is one, otherwise text. */
+  original(token: string, t: Target): Promise<{ html: string | null; text: string; to: string; cc: string }>;
 }
+
+export type NewMessage = { to: string[]; cc: string[]; subject: string; body: string };

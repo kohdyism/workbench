@@ -37,14 +37,15 @@ export async function GET(req: Request, { params }: { params: { provider: string
       const [u] = await sql`select id from users where id = ${userId}`;
       if (!u) userId = null;
     }
+    const [owner] = await sql`select user_id from accounts where provider = ${p} and email = ${me.email} limit 1`;
+    if (userId && owner && owner.user_id !== userId) return fail("already_linked");
     if (!userId) {
-      const [acc] = await sql`select user_id from accounts where provider = ${p} and email = ${me.email} limit 1`;
-      const [u] = acc ? [] : await sql`select id from users where email = ${me.email}`;
-      userId = acc?.user_id || u?.id || null;
+      const [u] = owner ? [] : await sql`select id from users where email = ${me.email}`;
+      userId = owner?.user_id || u?.id || null;
     }
     if (!userId) {
       userId = rid(10);
-      await sql`insert into users (id, email) values (${userId}, ${me.email})`;
+      await sql`insert into users (id, email, name) values (${userId}, ${me.email}, ${me.name.slice(0, 80)})`;
     }
 
     const exp = Date.now() + tokens.expires_in * 1000;

@@ -8,7 +8,7 @@ import { emailsByIds } from "@/lib/state";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type Body = { ids: string[]; action: string; param?: string; actor?: string; text?: string };
+type Body = { ids: string[]; action: string; param?: string; actor?: string; text?: string; agentId?: string; reason?: string; params?: Record<string, string> };
 
 const ACTIONS = ["done", "letgo", "delegate", "pin", "reply", "send", "project", "reopen", "agentsran"];
 const AUTO_SEND_MAX_IMPORTANCE = 4;
@@ -37,8 +37,8 @@ export const POST = handle(async (req) => {
     await sql`update emails set agents_ran = true where user_id = ${userId} and id = any(${ids})`;
     return Response.json({ emails: await emailsByIds(userId, ids), log: null, failed: [] });
   }
-  if (b.action === "delegate" && !isEmail(param)) throw new HttpError(400, "Delegate needs a colleague's email address");
-  if ((b.action === "reply" || b.action === "send") && !param.trim()) throw new HttpError(400, "The reply is empty");
+  if (b.action === "delegate" && !b.params && !isEmail(param)) throw new HttpError(400, "Delegate needs a colleague's email address");
+  if ((b.action === "reply" || b.action === "send") && !param.trim() && !b.params) throw new HttpError(400, "The reply is empty");
 
   const { rows, tokenFor, providerOf } = await loadForAction(userId, ids);
   const before = rows.map(snap);
@@ -55,7 +55,8 @@ export const POST = handle(async (req) => {
       const mail = providerOf(r);
       const t = target(r);
       const now = new Date().toISOString();
-      const text = param.replace(/\{first\}/g, firstName(r.from_name || r.from_email));
+      const own = b.params && typeof b.params[r.id] === "string" ? String(b.params[r.id]).slice(0, 10000) : param;
+      const text = own.replace(/\{first\}/g, firstName(r.from_name || r.from_email));
       let providerId = r.provider_id as string;
       const archiveOnce = async () => {
         if (!ARCHIVED.includes(r.status)) providerId = await mail.archive(token, t);
@@ -71,9 +72,10 @@ export const POST = handle(async (req) => {
           await sql`update emails set status = 'letgo', handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
           break;
         case "delegate":
-          await mail.forward(token, t, param, b.text || "Could you take this one, please? Thanks.");
+          if (!isEmail(own)) throw new Error("Delegate needs a colleague's email address");
+          await mail.forward(token, t, own, b.text || "Could you take this one, please? Thanks.");
           await archiveOnce();
-          await sql`update emails set status = 'delegated', delegated_to = ${param}, handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
+          await sql`update emails set status = 'delegated', delegated_to = ${own}, handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
           break;
         case "pin":
           await mail.setPinned(token, t, !r.pinned);
@@ -89,8 +91,8 @@ export const POST = handle(async (req) => {
           await sql`update emails set status = 'sent', draft = ${text}, handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
           break;
         case "project":
-          await mail.label(token, t, `Workbench/${param}`).catch(() => undefined);
-          await sql`update emails set ai = jsonb_set(coalesce(ai, '{}'::jsonb), '{project}', to_jsonb(${param}::text)) where id = ${r.id}`;
+          await mail.label(token, t, `Workbench/${own}`).catch(() => undefined);
+          await sql`update emails set ai = jsonb_set(coalesce(ai, '{}'::jsonb), '{project}', to_jsonb(${own}::text)) where id = ${r.id}`;
           break;
         case "reopen":
           if (ARCHIVED.includes(r.status)) providerId = await mail.unarchive(token, t);
@@ -111,15 +113,17 @@ export const POST = handle(async (req) => {
     };
     const one = rows.find((r) => r.id === done[0]);
     const what = done.length === 1 ? `“${one?.subject || "email"}”` : `${done.length} emails`;
-    const text = b.text && b.action !== "delegate"
+    const text = b.text && b.action !== "delegate" && b.action !== "send"
       ? b.text.slice(0, 200)
       : `${verb[b.action]} ${what}${b.action === "delegate" ? ` to ${param}` : b.action === "project" ? ` under ${param}` : ""}`;
     const undoable = b.action !== "send" && b.action !== "delegate";
     const id = rid(10);
     const undo = before.filter((s) => done.includes(s.id));
-    await sql`insert into log (id, user_id, actor, text, undo, undoable)
-      values (${id}, ${userId}, ${actor}, ${text}, ${sql.json(undo)}, ${undoable})`;
-    log = { id, t: new Date().toISOString(), actor, text, undoable, undone: false };
+    const agentId = b.agentId ? String(b.agentId).slice(0, 40) : null;
+    const reason = b.reason ? String(b.reason).slice(0, 300) : null;
+    await sql`insert into log (id, user_id, actor, text, undo, undoable, agent_id, reason)
+      values (${id}, ${userId}, ${actor}, ${text}, ${sql.json(undo)}, ${undoable}, ${agentId}, ${reason})`;
+    log = { id, t: new Date().toISOString(), actor, text, undoable, undone: false, agentId, reason, emailIds: done };
   }
   return Response.json({ emails: await emailsByIds(userId, ids), log, failed });
 });

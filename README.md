@@ -6,35 +6,48 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 
 ## What it does
 
-- **Sign in with Google or Microsoft.** People can link several mailboxes to one Workbench account.
-- **Sync** reads inbox mail from the last 14 days, when the page opens and every 5 minutes while it's open.
-- **Scoring:** Claude rates urgency, importance and effort (0 to 10), sets a type and project, and writes a summary. Each person sets their own weights, per-sender rules, an "about me" note and plain-language context for the week (which becomes rules that expire on Friday).
-- **Lanes:** Today (capped to the person's time budget), Plan, Delegate, Let go, Ready to send, Handled.
-- **Actions in the real mailbox:**
-  - **Done** archives the email.
-  - **Let go** archives it with a `Workbench/Let go` label (Gmail) or category (Outlook).
-  - **Pin** stars it (Gmail) or flags it (Outlook).
-  - **Save draft** creates a real reply draft.
-  - **Send** replies in the same thread, after a confirm step.
-  - **Forward** sends it to a colleague, then archives it.
-- **Agents:** "when X, do Y" rules that run on new mail after each sync. Each one either asks first (suggestions go under the bell icon) or acts automatically. **Agents can only send automatically to email with importance 4 or lower.** The server enforces this, not just the interface.
-- **Activity and undo:** every action is logged. Archiving, labelling and pinning can be undone. Sends and forwards can't.
-- **Demo mode** uses a sample inbox that runs entirely in the browser, with no sign-in.
+- **Accounts:** people sign up with an email and password, or continue with Google or Microsoft, then connect as many Gmail and Outlook mailboxes as they like. A mailbox can belong to only one Workbench account.
+- **Dashboard** (left navigation: Dashboard, Inbox, Agents, Priorities, Activity, Accounts):
+  - A Today list sized to the person's time budget.
+  - Stat tiles: need you today, decisions waiting, agent approvals, handled by agents today.
+  - Plan, Delegate and Let go lanes.
+  - An agent activity feed and mailbox status.
+  - Hovering a score, tile, lane, sender or mailbox shows more detail. Clicking opens a popover, dialog or side sheet, so the view itself only changes for bigger tasks.
+- **Inbox:** a normal mail client across every connected mailbox.
+  - Folders (Inbox, Drafts, Done), a mailbox filter and search.
+  - A reading pane that shows the original formatted email in a sandboxed frame, with remote images blocked until you choose to show them.
+  - Reply (with a Claude draft), forward, save a draft, send after a confirm step, done, let go, pin, and compose a new email from any mailbox.
+- **Agents:** a list of agents on the left. Clicking one shows its page on the right, with five tabs:
+  - **Activity:** what it has done, with reasons; suggestions waiting for approval; emails currently in scope.
+  - **Instructions:** plain-language instructions and the actions Claude may take.
+  - **Context:** facts only this agent sees.
+  - **Settings:** scope, importance limit, default action, approval mode, colour.
+  - **Test run:** previews what it would do, without changing anything.
+
+  An agent with instructions is Claude-powered: Claude reads each email in its scope and decides an action, a draft and a reason. Without instructions, it applies one fixed action.
+- **Scoring:** Claude rates urgency, importance and effort (0 to 10), sets a type and project, and summarises each email. People set their own weights, per-sender rules, an "about me" note and plain-language context for the week, which becomes rules that expire on Friday.
+- **Mailbox actions:** Done archives the email. Let go archives it with a `Workbench/Let go` label (Gmail) or category (Outlook). Pin stars or flags it. Workbench can also save real drafts, send replies in the thread, forward, and send new mail.
+- **Safety:** agents can only send automatically to email with importance 4 or lower, and the server enforces this. Sending always has a confirm step for people. Archiving, labelling and pinning can be undone from Activity; sends and forwards can't.
+- **Demo mode:** a sample inbox that runs entirely in the browser, with no sign-in.
 
 ## How it's built
 
 - **Framework and hosting:** Next.js 14 (App Router) on Vercel. The interface is one dependency-free script (`public/workbench.js`), and the API lives in `app/api/*`.
 - **Database:** Postgres (Neon or Vercel Postgres). Tables are created automatically on the first request.
-- **Sign-in:** OAuth 2.0 authorisation code flow with PKCE, written directly against Google and Microsoft with no auth library. Access and refresh tokens are encrypted at rest with AES-256-GCM. Sessions are signed, httpOnly cookies, and the server rejects writes coming from other sites.
+- **Sign-in:** email and password (scrypt-hashed, with a lockout after repeated failures), or the OAuth 2.0 authorisation code flow with PKCE, written directly against Google and Microsoft with no auth library. Access and refresh tokens are encrypted at rest with AES-256-GCM. Sessions are signed, httpOnly cookies, and the server rejects writes coming from other sites.
 - **Mail:** the Gmail API and Microsoft Graph, both behind one interface (`lib/providers`). Outlook uses immutable message ids, so moving a message doesn't break it.
 - **Claude:** the Messages API, called from the server with your key. Email text is treated as data, and the prompts tell Claude to ignore any instructions inside emails. Each user gets a daily allowance (`AI_DAILY_LIMIT`).
 
 ```
+app/api/auth/signup | login | logout      email and password accounts
 app/api/auth/[provider]/start|callback   OAuth sign-in and mailbox linking
 app/api/sync                             pull new mail, score it with Claude
 app/api/actions                          done, letgo, pin, reply, send, delegate, project, reopen
 app/api/undo                             reverse an action in the mailbox
-app/api/draft | context | agents/build   Claude features
+app/api/compose                          send or draft a new email
+app/api/emails/[id]/original             fetch the original formatted message
+app/api/agents/run                       Claude decides what an agent does with each email
+app/api/draft | context | agents/build   other Claude features
 app/api/state | settings | queue         load and save per-user state
 app/api/accounts/[id] (DELETE)           disconnect a mailbox and delete its data
 app/api/me (DELETE)                      delete the user and everything stored
@@ -100,11 +113,12 @@ npm run dev
 - **Google:** `gmail.modify` and `gmail.send` are *restricted* scopes. To let people beyond your test users sign in, Google requires app verification and an independent security assessment (CASA), renewed every year. While the app is in Testing mode, people see an "unverified app" warning and their sign-in expires after about 7 days, so they'll need to reconnect.
 - **Microsoft:** complete *publisher verification* so people don't see an "unverified" warning. Some organisations only allow apps an admin has approved, so their users will need admin consent.
 - Publish real terms and a privacy policy. `/privacy` is a starting template that covers Google's Limited Use requirements; have it reviewed for where you operate.
-- **Data handling:** message text is stored in your database and sent to Claude for scoring. Each person can disconnect a mailbox or delete everything from the account menu.
+- **Data handling:** message text is stored in your database and sent to Claude for scoring. Each person can disconnect a mailbox or delete everything from the Accounts page.
 
 ## Known limits
 
 - Only the inbox from the last 14 days is synced (`SYNC_DAYS`), up to 60 messages per mailbox per sync (`SYNC_MAX`).
 - Changes made in the mail app itself, such as archiving an email in Gmail, aren't reflected in Workbench until the email is handled there.
 - Yahoo, iCloud and other IMAP providers aren't supported yet.
+- There's no password reset by email yet, because the app has no email-sending service of its own. Add one (for example Resend or Postmark) before launch.
 - Agents run when Workbench syncs, which happens while someone has it open. They don't run in the background.

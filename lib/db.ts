@@ -85,6 +85,13 @@ create table if not exists queue (
   email_id text not null references emails(id) on delete cascade,
   created_at timestamptz not null default now()
 );
+alter table users add column if not exists name text;
+alter table users add column if not exists password_hash text;
+alter table log add column if not exists agent_id text;
+alter table log add column if not exists reason text;
+alter table queue add column if not exists action text;
+alter table queue add column if not exists param text;
+alter table queue add column if not exists reason text;
 `;
 
 export function ready(): Promise<void> {

@@ -4,7 +4,7 @@ export default function Privacy() {
   const owner = process.env.NEXT_PUBLIC_OPERATOR_NAME || "the operator of this Workbench instance";
   const contact = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "the contact address listed by the operator";
   return (
-    <main className="page">
+    <main className="page" style={{ margin: "0 auto" }}>
       <div className="prose">
         <a className="back" href="/">← Workbench</a>
         <h1>Privacy</h1>

@@ -3,10 +3,7 @@ import Script from "next/script";
 export default function Home() {
   return (
     <>
-      <header className="bar">
-        <div className="bar-in" id="bar" />
-      </header>
-      <main className="page" id="main" />
+      <div id="app" />
       <div id="overlay" />
       <div id="pop" className="pop" hidden />
       <div id="tip" className="tip" hidden />

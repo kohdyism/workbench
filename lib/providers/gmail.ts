@@ -1,4 +1,4 @@
-import { decodeEntities, forwardRaw, htmlToText, parseAddr, pool, replyRaw } from "../mime";
+import { decodeEntities, forwardRaw, htmlToText, newRaw, parseAddr, pool, replyRaw } from "../mime";
 import type { Incoming, MailProvider } from "./types";
 
 const BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -18,6 +18,18 @@ async function g(token: string, path: string, init: RequestInit = {}) {
 type Part = { mimeType?: string; body?: { data?: string }; parts?: Part[]; filename?: string };
 
 const unb64 = (s: string) => Buffer.from(s, "base64url").toString("utf8");
+
+function partsOf(p: Part): { text: string; html: string } {
+  let text = "", html = "";
+  const walk = (x: Part) => {
+    if (x.filename) return;
+    if (x.mimeType === "text/plain" && x.body?.data && !text) text = unb64(x.body.data);
+    if (x.mimeType === "text/html" && x.body?.data && !html) html = unb64(x.body.data);
+    (x.parts || []).forEach(walk);
+  };
+  walk(p);
+  return { text, html };
+}
 
 function bodyOf(p: Part): string {
   let html = "";
@@ -103,5 +115,18 @@ export const gmail: MailProvider = {
   },
   async forward(token, t, to, note) {
     await g(token, "/messages/send", { method: "POST", body: JSON.stringify({ raw: forwardRaw(t, to, note) }) });
+  },
+  async sendNew(token, m) {
+    await g(token, "/messages/send", { method: "POST", body: JSON.stringify({ raw: newRaw(m) }) });
+  },
+  async draftNew(token, m) {
+    await g(token, "/drafts", { method: "POST", body: JSON.stringify({ message: { raw: newRaw(m) } }) });
+  },
+  async original(token, t) {
+    const m = await g(token, `/messages/${t.providerId}?format=full`);
+    const h: Record<string, string> = {};
+    for (const x of m.payload?.headers || []) h[String(x.name).toLowerCase()] = x.value;
+    const { text, html } = partsOf(m.payload || {});
+    return { html: html || null, text: text || (html ? htmlToText(html) : ""), to: h.to || "", cc: h.cc || "" };
   },
 };

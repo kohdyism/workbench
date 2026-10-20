@@ -39,7 +39,7 @@ export async function emailsByIds(userId: string, ids: string[]) {
 
 export async function loadState(userId: string) {
   const sql = db();
-  const [user] = await sql`select id, email, settings from users where id = ${userId}`;
+  const [user] = await sql`select id, email, name, settings from users where id = ${userId}`;
   const accounts = await sql`select id, provider, email, error, last_sync from accounts where user_id = ${userId} order by created_at`;
   const emails = await sql.unsafe(
     `select ${EMAIL_COLS} from emails e join accounts a on a.id = e.account_id
@@ -47,15 +47,15 @@ export async function loadState(userId: string) {
      order by e.date desc limit 1500`,
     [userId]
   );
-  const log = await sql`select id, t, actor, text, undoable, undone from log where user_id = ${userId} order by t desc limit 40`;
-  const queue = await sql`select id, agent_id, email_id from queue where user_id = ${userId}`;
+  const log = await sql`select id, t, actor, text, undoable, undone, agent_id, reason, undo from log where user_id = ${userId} order by t desc limit 200`;
+  const queue = await sql`select id, agent_id, email_id, action, param, reason, created_at from queue where user_id = ${userId}`;
   return {
-    user: { email: user?.email || "" },
+    user: { email: user?.email || "", name: user?.name || "" },
     accounts: accounts.map((a: any) => ({ id: a.id, provider: a.provider, email: a.email, error: a.error, lastSync: a.last_sync })),
     emails: emails.map(toClient),
     settings: user?.settings || {},
-    log: log.map((l: any) => ({ id: l.id, t: new Date(l.t).toISOString(), actor: l.actor, text: l.text, undoable: l.undoable, undone: l.undone })),
-    queue: queue.map((q: any) => ({ id: q.id, agentId: q.agent_id, emailId: q.email_id })),
+    log: log.map((l: any) => ({ id: l.id, t: new Date(l.t).toISOString(), actor: l.actor, text: l.text, undoable: l.undoable, undone: l.undone, agentId: l.agent_id, reason: l.reason, emailIds: (l.undo || []).map((u: any) => u.id) })),
+    queue: queue.map((q: any) => ({ id: q.id, agentId: q.agent_id, emailId: q.email_id, action: q.action, param: q.param, reason: q.reason, t: new Date(q.created_at).toISOString() })),
     ai: { enabled: aiEnabled(), remaining: aiEnabled() ? await remainingToday(userId) : 0 },
   };
 }

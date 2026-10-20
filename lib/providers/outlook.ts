@@ -35,6 +35,14 @@ type GraphMsg = {
   flag?: { flagStatus?: string };
 };
 
+const recipients = (xs: string[]) => xs.map((address) => ({ emailAddress: { address } }));
+const graphMessage = (msg: { to: string[]; cc: string[]; subject: string; body: string }) => ({
+  subject: msg.subject,
+  body: { contentType: "Text", content: msg.body },
+  toRecipients: recipients(msg.to),
+  ccRecipients: recipients(msg.cc),
+});
+
 const move = async (token: string, id: string, dest: string) =>
   (await m(token, `/messages/${id}/move`, { method: "POST", json: { destinationId: dest } })).id as string;
 
@@ -79,6 +87,26 @@ export const outlook: MailProvider = {
   },
   async sendReply(token, t, text) {
     await m(token, `/messages/${t.providerId}/reply`, { method: "POST", json: { comment: text } });
+  },
+  async sendNew(token, msg) {
+    await m(token, "/sendMail", { method: "POST", json: { message: graphMessage(msg), saveToSentItems: true } });
+  },
+  async draftNew(token, msg) {
+    await m(token, "/messages", { method: "POST", json: graphMessage(msg) });
+  },
+  async original(token, t) {
+    const x = await m(token, `/messages/${t.providerId}?$select=body,toRecipients,ccRecipients`, {
+      headers: { prefer: 'IdType="ImmutableId"' },
+    });
+    const isHtml = String(x.body?.contentType || "").toLowerCase() === "html";
+    const list = (r: { emailAddress?: { address?: string } }[] | undefined) =>
+      (r || []).map((y) => y.emailAddress?.address).filter(Boolean).join(", ");
+    return {
+      html: isHtml ? x.body.content : null,
+      text: isHtml ? "" : x.body?.content || "",
+      to: list(x.toRecipients),
+      cc: list(x.ccRecipients),
+    };
   },
   async forward(token, t, to, note) {
     await m(token, `/messages/${t.providerId}/forward`, {
