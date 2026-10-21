@@ -63,8 +63,21 @@ async function labelId(token: string, name: string): Promise<string> {
 export const gmail: MailProvider = {
   async list(token, { days, max, known }) {
     const q = encodeURIComponent(`in:inbox newer_than:${days}d`);
-    const res = await g(token, `/messages?q=${q}&maxResults=${max}`);
-    const ids: string[] = (res.messages || []).map((m: { id: string }) => m.id).filter((id: string) => !known.has(id));
+    const ids: string[] = [];
+    let page = "", scanned = 0, more = false;
+    for (;;) {
+      const res = await g(token, `/messages?q=${q}&maxResults=100${page ? `&pageToken=${page}` : ""}`);
+      const batch: string[] = (res.messages || []).map((m: { id: string }) => m.id);
+      scanned += batch.length;
+      for (const id of batch) {
+        if (known.has(id)) continue;
+        if (ids.length < max) ids.push(id);
+        else { more = true; break; }
+      }
+      page = res.nextPageToken || "";
+      if (more || !page) break;
+      if (scanned >= 5000) { more = true; break; }
+    }
     const out: Incoming[] = [];
     await pool(ids, 6, async (id) => {
       const m = await g(token, `/messages/${id}?format=full`);
@@ -86,7 +99,7 @@ export const gmail: MailProvider = {
         unread: (m.labelIds || []).includes("UNREAD"),
       });
     });
-    return out;
+    return { items: out, more };
   },
   async archive(token, t) {
     await modify(token, t.providerId, [], ["INBOX"]);

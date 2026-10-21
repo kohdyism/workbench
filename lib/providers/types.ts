@@ -19,8 +19,9 @@ export type Incoming = {
 export type Target = OutEmail & { providerId: string; threadId: string | null };
 
 export interface MailProvider {
-  /** Inbox messages from the last `days` days, skipping ids already stored. */
-  list(token: string, opts: { days: number; max: number; known: Set<string> }): Promise<Incoming[]>;
+  /** Up to `max` inbox messages from the last `days` days that aren't stored yet, newest first.
+   *  Pages back through older mail, so a long window is filled over several syncs. `more` says there are still more to fetch. */
+  list(token: string, opts: { days: number; max: number; known: Set<string> }): Promise<{ items: Incoming[]; more: boolean }>;
   /** Removes from the inbox. Returns the message id afterwards (Outlook ids change on move). */
   archive(token: string, t: Target): Promise<string>;
   unarchive(token: string, t: Target): Promise<string>;

@@ -6,7 +6,7 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 
 ## What it does
 
-- **Accounts:** people sign up with an email and password, or continue with Google or Microsoft, then connect as many Gmail and Outlook mailboxes as they like. A mailbox can belong to only one Workbench account.
+- **Accounts:** people sign up with an email and password, or continue with Google or Microsoft, then connect as many Gmail and Outlook mailboxes as they like. A mailbox can belong to only one Workbench account. When connecting, they choose how far back Workbench sorts: the last week, 2 weeks, month or 3 months (changeable later in Accounts). Longer periods are fetched in pages over a few syncs, and Claude scores up to the daily allowance, with the rest sorted by basic rules until it catches up.
 - **Navigation:** the left bar has sections with subtabs, so you can work in one focused list at a time.
   - **Dashboard:** Overview and Buckets.
   - **Inbox:** Do today, Needs your OK, Replies owed, Do later, Hand off, Low priority, All mail, Drafts and Done, then one list per bucket.
@@ -138,7 +138,7 @@ npm run dev
 
 ## Known limits
 
-- Only the inbox from the last 14 days is synced (`SYNC_DAYS`), up to 60 messages per mailbox per sync (`SYNC_MAX`).
+- Each person chooses a sync window of up to 90 days (the default is `SYNC_DAYS`, 14). Each sync round brings in up to `SYNC_MAX` (default 100) new messages per mailbox, paging back through older mail over several rounds.
 - Changes made in the mail app itself, such as archiving an email in Gmail, aren't reflected in Workbench until the email is handled there.
 - Yahoo, iCloud and other IMAP providers aren't supported yet.
 - There's no password reset by email yet, because the app has no email-sending service of its own. Add one (for example Resend or Postmark) before launch.

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const DAYS = () => Number(process.env.SYNC_DAYS || 14);
-const MAX = () => Math.min(200, Number(process.env.SYNC_MAX || 60));
+const MAX = () => Math.min(200, Number(process.env.SYNC_MAX || 100));
 const SCORE_PER_SYNC = 30;
 
 /** Turns a provider error into something the person can act on. */
@@ -33,6 +33,11 @@ export const POST = handle(async (req) => {
   const accounts = (await sql`select * from accounts where user_id = ${userId}`) as unknown as AccountRow[];
   const problems: { account: string; error: string }[] = [];
   let added = 0;
+  let more = false;
+  // How far back to sort is each person's choice (set when they connect), within 1 to 90 days.
+  const [me] = await sql`select settings from users where id = ${userId}`;
+  const chosen = Number((me?.settings as { syncDays?: number } | null)?.syncDays);
+  const days = Math.max(1, Math.min(90, Number.isFinite(chosen) && chosen > 0 ? chosen : DAYS()));
 
   // 1. Pull new inbox mail from every connected mailbox.
   for (const a of accounts) {
@@ -40,7 +45,8 @@ export const POST = handle(async (req) => {
       const token = await accessToken(a);
       const knownRows = await sql`select provider_id from emails where account_id = ${a.id}`;
       const known = new Set<string>(knownRows.map((r) => r.provider_id as string));
-      const incoming = await MAIL[a.provider].list(token, { days: DAYS(), max: MAX(), known });
+      const { items: incoming, more: hasMore } = await MAIL[a.provider].list(token, { days, max: MAX(), known });
+      if (hasMore) more = true;
       for (const m of incoming) {
         const res = await sql`
           insert into emails (id, user_id, account_id, provider_id, thread_id, message_id, from_name, from_email,
@@ -101,5 +107,5 @@ export const POST = handle(async (req) => {
     remaining = grant < pending.length || (take.length > 0 && scored === 0) ? 0 : n;
   }
 
-  return Response.json({ added, scored, remaining, problems, state: await loadState(userId) });
+  return Response.json({ added, scored, remaining, more, problems, state: await loadState(userId) });
 });

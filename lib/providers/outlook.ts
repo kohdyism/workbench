@@ -4,7 +4,7 @@ const BASE = "https://graph.microsoft.com/v1.0/me";
 
 async function m(token: string, path: string, init: RequestInit & { json?: unknown } = {}) {
   const { json, ...rest } = init;
-  const r = await fetch(BASE + path, {
+  const r = await fetch(path.startsWith("https://") ? path : BASE + path, {
     ...rest,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
     headers: {
@@ -51,12 +51,26 @@ export const outlook: MailProvider = {
   async list(token, { days, max, known }) {
     const since = new Date(Date.now() - days * 864e5).toISOString();
     const select = "id,conversationId,internetMessageId,subject,from,toRecipients,receivedDateTime,bodyPreview,body,flag,isRead";
-    const path =
-      `/mailFolders/inbox/messages?$top=${max}&$select=${select}` +
+    let path =
+      `/mailFolders/inbox/messages?$top=50&$select=${select}` +
       `&$filter=${encodeURIComponent(`receivedDateTime ge ${since}`)}&$orderby=${encodeURIComponent("receivedDateTime desc")}`;
-    const res = await m(token, path);
-    return ((res.value || []) as GraphMsg[])
-      .filter((x) => !known.has(x.id))
+    const fresh: GraphMsg[] = [];
+    let more = false, scanned = 0;
+    for (;;) {
+      const res = await m(token, path);
+      const batch = (res.value || []) as GraphMsg[];
+      scanned += batch.length;
+      for (const x of batch) {
+        if (known.has(x.id)) continue;
+        if (fresh.length < max) fresh.push(x);
+        else { more = true; break; }
+      }
+      const next = res["@odata.nextLink"] as string | undefined;
+      if (more || !next) break;
+      if (scanned >= 3000) { more = true; break; }
+      path = next;
+    }
+    const items = fresh
       .map(
         (x): Incoming => ({
           providerId: x.id,
@@ -73,6 +87,7 @@ export const outlook: MailProvider = {
           unread: x.isRead === false,
         })
       );
+    return { items, more };
   },
   archive: (token, t) => move(token, t.providerId, "archive"),
   unarchive: (token, t) => move(token, t.providerId, "inbox"),

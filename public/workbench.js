@@ -124,6 +124,11 @@ function mergeEmails(list){(list||[]).forEach(n=>{const i=S.emails.findIndex(e=>
 let setT;const saved={t:0};
 function markSaved(){saved.t=Date.now();const el=document.getElementById("savedmark");if(el)el.textContent="Saved";}
 function saveSet(){if(!live()){markSaved();return;}clearTimeout(setT);setT=setTimeout(()=>api("/api/settings",{settings:S.set},"PUT").then(markSaved).catch(()=>toast("Couldn't save your settings. Check your connection.")),600);}
+async function saveSetNow(){clearTimeout(setT);if(!live()){markSaved();return;}try{await api("/api/settings",{settings:S.set},"PUT");markSaved();}catch(e){toast("Couldn't save your settings. Check your connection.");}}
+const WINDOWS=[[7,"1 week"],[14,"2 weeks"],[30,"1 month"],[90,"3 months"]];
+const winLabel=d=>(WINDOWS.find(w=>w[0]===d)||[0,`${d} days`])[1];
+const lastLabel=d=>({7:"last week",14:"last 2 weeks",30:"last month",90:"last 3 months"}[d]||`last ${d} days`);
+const windowSeg=(cur,a)=>`<div class="seg" role="radiogroup" aria-label="How far back to sort">${WINDOWS.map(([d,l])=>`<button role="radio" data-a="${a}" data-v="${d}" aria-pressed="${cur===d}" aria-checked="${cur===d}">${l}</button>`).join("")}</div>`;
 function saveQueue(add,remove,clear){if(!live())return;api("/api/queue",{add,remove,clear}).catch(()=>{});}
 
 /* ================= scoring and ranking ================= */
@@ -309,13 +314,14 @@ async function sync(manual){
  if(!live()||S.syncing)return;
  S.syncing=true;S.syncNote="Checking mail";renderChrome();
  try{
-  for(let round=0;round<8;round++){
+  let total=0;
+  for(let round=0;round<20;round++){
    const r=await api("/api/sync",{});
-   applyState(r.state);
+   applyState(r.state);total+=r.added||0;
    if(r.problems&&r.problems.length&&round===0)toast(`${r.problems[0].account}: ${r.problems[0].error}`);
-   if(manual&&round===0&&r.added===0&&!r.remaining)toast("You're up to date");
-   if(!S.ai.enabled||!r.remaining)break;
-   S.syncNote=`Sorting · ${r.remaining} left`;render();
+   if(manual&&round===0&&r.added===0&&!r.remaining&&!r.more)toast("You're up to date");
+   const sorting=S.ai.enabled&&r.remaining;if(!r.more&&!sorting)break;
+   S.syncNote=r.more?`Fetching older mail · ${total} so far`:`Sorting · ${r.remaining} left`;render();
   }
   const pending=S.emails.filter(e=>OPEN(e)&&!e.agentsRan&&(e.by==="ai"||!S.ai.enabled));
   if(pending.length){S.syncNote="Agents working";renderChrome();await runAgents(pending);}
@@ -518,9 +524,13 @@ function authHTML(){
    <p class="fine">Workbench reads your recent inbox to sort it and only sends when you, or an agent you allowed, say so. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
   </form></section></div>`;
 }
+function winNote(d){return d>=30?`Claude scores up to about ${AI_DAY_HINT} emails a day. If there's more than that, the rest are sorted with basic rules first and Claude catches up over the next day or two.`:"Most people start with two weeks.";}
+const AI_DAY_HINT=400;
 function vConnect(){
  return topHTML("Connect your email")+`<div class="page"><div class="onb">
-  <div><h2 class="hero">Connect the inboxes you want Workbench to sort.</h2><p class="muted" style="margin-top:8px;max-width:60ch">Add as many as you like. Workbench reads the last two weeks of each inbox, and can archive, label, draft and send on your instruction.</p></div>
+  <div><h2 class="hero">Connect the inboxes you want Workbench to sort.</h2><p class="muted" style="margin-top:8px;max-width:60ch">Add as many as you like. Workbench reads recent mail from each inbox, and can archive, label, draft and send on your instruction.</p></div>
+  <div class="card"><div class="card-b" style="gap:10px"><div><b>How far back should Workbench sort?</b><p class="note">Only email from this period is brought in, scored and grouped. You can change it later in Accounts.</p></div>${windowSeg(S.set.syncDays||14,"setwindow")}
+   <p class="note">${winNote(S.set.syncDays||14)}</p></div></div>
   <div class="prov">
    <a class="provc" href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c}">G</span><b>Gmail</b><span class="note">Google Workspace or personal Gmail</span></a>
    <a class="provc" href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c}">O</span><b>Outlook</b><span class="note">Microsoft 365, Outlook.com or Hotmail</span></a>
@@ -1367,7 +1377,8 @@ function vAccounts(){
   <section class="card"><div class="card-h"><h3>Mailboxes</h3><span class="sp">${live()?`<button class="btn sm" data-a="sync" ${S.syncing?"disabled":""}>${ic("sync")}Check mail</button>`:""}</span></div>
    <div class="card-b">${S.accounts.length?`<div class="lst">${S.accounts.map(a=>{const cnt=S.emails.filter(e=>e.accountId===a.id).length;return `<div class="li"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><div class="grow"><div>${esc(a.email)}</div><div class="s2">${pv(a.provider).n} · ${a.error?"Reconnect needed":a.lastSync?"Synced "+esc(fullDate(a.lastSync)):"Not synced yet"} · ${cnt} emails</div></div>${a.error?`<a class="btn sm pri" href="/api/auth/${a.provider}/start?hint=${encodeURIComponent(a.email)}">Reconnect</a>`:""}${live()?`<button class="btn sm" data-a="disconnect" data-id="${a.id}">Disconnect</button>`:""}</div>`;}).join("")}</div>`:`<p class="muted">No mailboxes connected.</p>`}
    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/api/auth/google/start"><span class="pv" style="background:${PV.google.c};width:18px;height:18px">G</span>Add Gmail</a><a class="btn" href="/api/auth/microsoft/start"><span class="pv" style="background:${PV.microsoft.c};width:18px;height:18px">O</span>Add Outlook</a></div>
-   <p class="note">Workbench syncs the last 14 days of each inbox when you open it, and every 5 minutes while it's open.</p></div></section>
+   <div class="fld"><span class="lbl">Sort mail from the last</span>${windowSeg(S.set.syncDays||14,"setwindow")}</div>
+   <p class="note">Workbench syncs when you open it, and every 5 minutes while it's open. A longer period brings in older mail on the next sync; a shorter one applies to new syncs.</p></div></section>
  </div><div class="col">
   <section class="card"><div class="card-h"><h3>Your account</h3></div><div class="card-b"><div class="kv"><span>Name</span><span>${esc(S.user&&S.user.name||"Not set")}</span><span>Email</span><span>${esc(S.user&&S.user.email||"")}</span>${live()?`<span>Claude</span><span>${S.ai.enabled?`${S.ai.remaining} AI actions left today`:"Not set up on this server"}</span>`:""}</div>
    <div style="display:flex;gap:8px;flex-wrap:wrap">${live()?`<button class="btn sm" data-a="logout">Sign out</button><button class="btn sm danger" data-a="deleteme">Delete my data</button>`:`<button class="btn sm pri" data-a="exitdemo">Leave the demo</button>`}<a class="btn link sm" href="/privacy">Privacy</a></div></div></section>
@@ -1455,6 +1466,9 @@ function renderModal(){setTimeout(unsubUI,0);
   <p class="note" id="bk-count">${bucketPreview(b)}</p>
   ${(b.include||[]).length||(b.exclude||[]).length?`<div class="note">${(b.include||[]).length} email${(b.include||[]).length===1?"":"s"} placed here by hand or by Claude${(b.exclude||[]).length?`, ${(b.exclude||[]).length} kept out`:""}. <button class="btn link sm" style="padding:0" data-a="bkclear">Clear these</button></div>`:""}`;
   foot=`${M.isNew?"":`<button class="btn sm danger" data-a="delbucket" data-id="${b.id}" style="margin-right:auto">Delete bucket</button>`}<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="savebucket">${M.isNew?"Create bucket":"Save"}</button>`;}
+ else if(M.t==="window"){title="How far back should Workbench sort?";
+  h=`<p class="muted">Workbench brings in, scores and groups email from this period. Older mail stays in your mailbox untouched.</p>${windowSeg(M.d,"pickwindow")}<p class="note">${winNote(M.d)}</p>`;
+  foot=`<button class="btn pri sm" data-a="startwindow">Start sorting</button>`;}
  else if(M.t==="bulk"){const r=bulkModalHTML(M);title=r.title;h=r.h;foot=r.foot;}
  else if(M.t==="delbucket"){const b=bucketById(M.id);title=`Remove ${b?b.name:"bucket"}?`;h=`<p class="muted">Its emails move to other buckets or Everything else. Nothing changes in your mailbox.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm redfill" data-a="dodelbucket" data-id="${M.id}">Remove bucket</button>`;}
  else if(M.t==="delagent"){const a=agentById(M.id);title=`Delete ${a?a.name:"agent"}?`;h=`<p class="muted">Its pending suggestions are removed. Its past actions stay in Activity.</p>`;foot=`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm redfill" data-a="dodelagent" data-id="${M.id}">Delete agent</button>`;}
@@ -1630,7 +1644,7 @@ async function onClick(ev){
   case "addrule":{const who=document.getElementById("r-who").value.trim();if(!who)return;const [eff,n]=document.getElementById("r-eff").value.split("|");
    S.set.rules=(S.set.rules||[]).concat([{id:uid(),field:"sender",value:who,effect:eff,amount:Number(n),label:`${who}: ${eff==="mul"?"more important":eff==="urg"?"more urgent":"less important"}`}]);saveSet();render();break;}
   case "rmrule":S.set.rules=S.set.rules.filter(r=>r.id!==id);saveSet();render();break;
-  case "closemodal":S.modal=null;renderModal();break;
+  case "closemodal":if(S.modal&&S.modal.t==="window"){const d=S.modal.d||14;S.set.syncDays=d;S.modal=null;renderModal();await saveSetNow();sync(true);break;}S.modal=null;renderModal();break;
   case "queue":openPop(t,popQueue(),"queue");break;
   case "sync":closePop();sync(true);break;
   case "undo":document.getElementById("toast").hidden=true;await undo(id);break;
@@ -1654,6 +1668,10 @@ async function onClick(ev){
    if(tpl==="VIP watcher")ag.context="VIPs: (add names or email addresses here)";
    S.set.agents.push(ag);S.set.agentsChosen=true;saveSet();S.modal=null;go("agents",ag.id,tpl==="blank"?"settings":"instructions");toast(`Created “${ag.name}”`);break;}
   case "addpreset":addPreset(v);break;
+  case "pickwindow":if(S.modal&&S.modal.t==="window"){S.modal.d=Number(v);renderModal();}break;
+  case "startwindow":{const d=S.modal&&S.modal.d||14;S.set.syncDays=d;S.modal=null;renderModal();await saveSetNow();toast(`Sorting the ${lastLabel(d)}`);sync(true);break;}
+  case "setwindow":{const d=Number(v);const prev=S.set.syncDays||14;S.set.syncDays=d;render();await saveSetNow();
+   if(live()&&S.accounts.length&&d>prev){toast(`Bringing in mail from the ${lastLabel(d)}`);sync(true);}else toast(`Workbench will sort the ${lastLabel(d)}`);break;}
   case "delagent":S.modal={t:"delagent",id};renderModal();break;
   case "dodelagent":{S.set.agents=S.set.agents.filter(x=>x.id!==id);const rm=S.queue.filter(q=>q.agentId===id).map(q=>q.id);S.queue=S.queue.filter(q=>q.agentId!==id);saveQueue([],rm);saveSet();S.modal=null;go("agents");break;}
   case "actfilter":S.actFilter=v;render();break;
@@ -1792,7 +1810,7 @@ async function enterApp(view){
  if(c||p.get("error")){const em=authErrText(p);history.replaceState(null,"","/"+(location.hash||""));if(c)setTimeout(()=>toast(`${pv(c).n} connected. Checking mail…`),50);else if(em)setTimeout(()=>toast(em),50);}
  S.route=parseRoute();
  if(view)go(view);else if(["login","signup",""].includes(S.route.view))go(S.accounts.length?"dashboard":"connect");else render();
- sync();
+ if(S.accounts.length&&!S.set.syncDays){S.modal={t:"window",d:14};renderModal();}else sync();
  if(!window.__wbTimer)window.__wbTimer=setInterval(()=>{if(document.visibilityState==="visible")sync();},5*60*1000);
 }
 async function boot(){
