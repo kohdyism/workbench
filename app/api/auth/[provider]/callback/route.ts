@@ -28,6 +28,8 @@ export async function GET(req: Request, { params }: { params: { provider: string
     await ready();
     const sql = db();
     const tokens = await exchangeCode(p, code, saved.verifier);
+    // Google lets people untick permissions. Without mail access nothing works, so say so clearly.
+    if (p === "google" && tokens.scope && !/gmail\.modify/.test(tokens.scope)) return fail("missing_scopes");
     const me = await profile(p, tokens.access_token);
     if (!me.email) return fail("no_email");
 

@@ -14,6 +14,19 @@ const DAYS = () => Number(process.env.SYNC_DAYS || 14);
 const MAX = () => Math.min(100, Number(process.env.SYNC_MAX || 60));
 const SCORE_PER_SYNC = 30;
 
+/** Turns a provider error into something the person can act on. */
+function explain(e: unknown): string {
+  const m = String((e as Error)?.message || "");
+  if (/has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(m))
+    return "The Gmail API isn't turned on in your Google Cloud project. Enable it, then sync again.";
+  if (/insufficient|SCOPE_INSUFFICIENT|PERMISSION_DENIED/i.test(m))
+    return "Workbench wasn't given access to read mail. Reconnect and tick both Gmail permission boxes.";
+  if (/ 401:|invalid_grant|UNAUTHENTICATED/i.test(m)) return "Sign-in expired. Reconnect this mailbox.";
+  if (/ 429:|rateLimit|quota/i.test(m)) return "The mail service is rate-limiting requests. Try again in a minute.";
+  const code = m.match(/^(Gmail|Outlook) (\d{3})/);
+  return code ? `Couldn't reach this mailbox (${code[1]} error ${code[2]}).` : "Couldn't reach this mailbox.";
+}
+
 export const POST = handle(async (req) => {
   const userId = await requireUser(req);
   const sql = db();
@@ -39,7 +52,7 @@ export const POST = handle(async (req) => {
       }
       await sql`update accounts set last_sync = now(), error = null where id = ${a.id}`;
     } catch (e) {
-      const msg = e instanceof ReconnectError ? "Reconnect needed" : "Couldn't reach this mailbox";
+      const msg = e instanceof ReconnectError ? "Reconnect needed" : explain(e);
       problems.push({ account: a.email, error: msg });
       if (!(e instanceof ReconnectError)) console.error("Sync failed for", a.provider, e);
     }

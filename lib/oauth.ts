@@ -62,7 +62,7 @@ export function authorizeUrl(p: Provider, state: string, challenge: string, logi
   return u.toString();
 }
 
-type Tokens = { access_token: string; refresh_token?: string; expires_in: number };
+type Tokens = { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
 
 async function tokenRequest(p: Provider, params: Record<string, string>): Promise<Tokens> {
   const c = CONFIG[p];

@@ -469,10 +469,11 @@ function rowHTML(e,opt={}){
 }
 
 /* ================= auth & onboarding ================= */
+function authErrText(p){return ({not_configured:`Sign-in with ${p.get("provider")==="microsoft"?"Microsoft":"Google"} isn't set up on this server yet.`,access_denied:"You cancelled the sign-in.",state_mismatch:"That sign-in expired. Please try again.",connect_failed:"Workbench couldn't connect that account. Please try again.",no_email:"That account didn't share an email address.",already_linked:"That mailbox is already connected to a different Workbench account.",missing_scopes:"Workbench needs permission to read and send mail. Try again and tick both Gmail boxes on Google's permission screen."})[p.get("error")]||(p.get("error")?"Something went wrong connecting that account. Please try again.":"");}
 function authHTML(){
  const signup=S.route.view==="signup";
  const p=new URLSearchParams(location.search);
- const err=S.authErr||({not_configured:`Sign-in with ${p.get("provider")==="microsoft"?"Microsoft":"Google"} isn't set up on this server yet.`,access_denied:"You cancelled the sign-in.",state_mismatch:"That sign-in expired. Please try again.",connect_failed:"Workbench couldn't connect that account. Please try again.",no_email:"That account didn't share an email address.",already_linked:"That mailbox is already connected to a different Workbench account."}[p.get("error")]||"");
+ const err=S.authErr||authErrText(p);
  return `<div class="auth">
   <section class="brand"><div class="logo"><span class="mark">W</span>Workbench</div>
    <div style="display:flex;flex-direction:column;gap:18px"><h1>Tackle email strategically.</h1><p>Connect every inbox you use. Workbench scores each email for urgency, importance and effort, lets your agents handle the routine, and shows you only what deserves you today.</p></div>
@@ -1591,7 +1592,7 @@ document.addEventListener("keydown",ev=>{
 async function enterApp(view){
  const st=await api("/api/state");S.mode="live";applyState(st);
  const p=new URLSearchParams(location.search);const c=p.get("connected");
- if(c||p.get("error")){history.replaceState(null,"","/"+(location.hash||""));if(c)setTimeout(()=>toast(`${pv(c).n} connected. Checking mail…`),50);}
+ if(c||p.get("error")){const em=authErrText(p);history.replaceState(null,"","/"+(location.hash||""));if(c)setTimeout(()=>toast(`${pv(c).n} connected. Checking mail…`),50);else if(em)setTimeout(()=>toast(em),50);}
  S.route=parseRoute();
  if(view)go(view);else if(["login","signup",""].includes(S.route.view))go(S.accounts.length?"dashboard":"connect");else render();
  sync();
