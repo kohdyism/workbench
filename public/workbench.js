@@ -67,8 +67,8 @@ const S={
  mode:"loading",user:null,accounts:[],emails:[],set:DEFAULT_SET(),log:[],queue:[],ai:{enabled:false,remaining:0},
  route:{view:"dashboard"},sheet:null,sheetFull:false,drafts:{},drafting:null,confirmSend:null,
  modal:null,syncing:false,syncNote:"",busy:new Set(),ctxBusy:false,
- box:{folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
- tests:{},actFilter:"all",authErr:"",authBusy:false,dim:"project",showAllDims:false,showAllApprovals:false,qEdits:{},qEditing:null,tasks:[],keepTasks:new Set(),bucketSel:null,bview:"topic",bucketStatus:null,rundownOpen:false,sumBusy:false,rdBusy:false,bkBusy:false,tsEdit:null,showDone:false,readSent:new Set()
+ box:{queue:"all",lastIds:null,folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
+ tests:{},actFilter:"all",authErr:"",authBusy:false,dim:"project",showAllDims:false,showAllApprovals:false,qEdits:{},qEditing:null,tasks:[],keepTasks:new Set(),bucketSel:null,bview:"topic",navOpen:(()=>{try{return JSON.parse(localStorage.getItem("wb.nav")||"{}")||{};}catch(e){return {};}})(),bucketStatus:null,rundownOpen:false,sumBusy:false,rdBusy:false,bkBusy:false,tsEdit:null,showDone:false,readSent:new Set()
 };
 
 /* ================= utils ================= */
@@ -388,8 +388,8 @@ async function startDemo(){
 }
 
 /* ================= routing ================= */
-function parseRoute(){const h=location.hash.replace(/^#\/?/,"").split("/");return {view:h[0]||"dashboard",id:h[1]?decodeURIComponent(h[1]):null,tab:h[2]||null};}
-function go(view,id,tab){const h="#/"+[view,id&&encodeURIComponent(id),tab].filter(Boolean).join("/");if(location.hash!==h)location.hash=h;else{S.route=parseRoute();render();}}
+function parseRoute(){const h=location.hash.replace(/^#\/?/,"").split("/");const d=x=>{try{return decodeURIComponent(x);}catch(e){return x;}};return {view:h[0]||"dashboard",id:h[1]?d(h[1]):null,tab:h[2]?d(h[2]):null};}
+function go(view,id,tab){const h="#/"+[view,id&&encodeURIComponent(id),tab&&encodeURIComponent(tab)].filter(Boolean).join("/");if(location.hash!==h)location.hash=h;else{S.route=parseRoute();render();}}
 window.addEventListener("hashchange",()=>{S.route=parseRoute();S.authErr="";closePop();S.sheet=null;render();if(S.route.view!=="inbox")window.scrollTo(0,0);});
 
 /* ================= rendering: shared ================= */
@@ -398,7 +398,7 @@ function render(){
  if(S.mode==="loading"){app().innerHTML=`<div class="auth"><div class="brand"><div class="logo"><span class="mark">W</span>Workbench</div></div><div class="side"><span class="spin"></span></div></div>`;return;}
  if(S.mode==="signedout"){const k=captureFocus();app().innerHTML=authHTML();restoreFocus(k);renderOverlays();return;}
  const r=S.route;
- const views={dashboard:vDashboard,inbox:vInbox,tasks:vTasks,agents:vAgents,priorities:vPriorities,activity:vActivity,accounts:vAccounts,connect:vConnect};
+ const views={dashboard:vDashboard,buckets:vBuckets,inbox:vInbox,tasks:vTasks,agents:vAgents,priorities:vPriorities,activity:vActivity,accounts:vAccounts,connect:vConnect};
  const v=views[r.view]?r.view:"dashboard";
  const keep=captureFocus();
  const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;
@@ -411,25 +411,34 @@ const statusHTML=()=>S.syncing?`<span class="status" role="status"><span class="
 function captureFocus(){const a=document.activeElement;if(!a||!a.id)return null;return {id:a.id,s:a.selectionStart,e:a.selectionEnd};}
 function restoreFocus(k){if(!k)return;const el=document.getElementById(k.id);if(el&&document.activeElement!==el){el.focus();try{if(k.s!=null)el.setSelectionRange(k.s,k.e);}catch(e){}}}
 function navHTML(v){
- const st=compute();const nq=queueItems().length;
+ const st=compute();const nq=queueItems().length;const r=S.route;
+ const rq=v==="inbox"?(isQueue(r.id)?r.id:(S.box.queue||"all")):null;
  const item=(k,icon,t,ct,hot)=>`<a class="nv" href="#/${k}" ${v===k?'aria-current="page"':""} title="${t}">${ic(icon)}<span class="t">${t}</span>${ct?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a>`;
+ const sub=(href,t,ct,cur,dot,hot)=>`<a class="nv sub" href="${href}" ${cur?'aria-current="page"':""}>${dot?`<span class="ldot" style="background:${dot}"></span>`:""}<span class="t">${esc(t)}</span>${ct?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a>`;
+ const grp=(k,icon,t,href,active,ct,hot,kids)=>{const open=S.navOpen[k]??(active||k==="inbox"||k==="dashboard");
+  return `<div class="ng${active?" act":""}"><div class="nvh"><a class="nv" href="${href}" ${active&&!open?'aria-current="page"':""} title="${t}">${ic(icon)}<span class="t">${t}</span>${ct&&!open?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a><button class="nv-tg" data-a="navtg" data-v="${k}" aria-expanded="${open}" aria-label="${open?"Hide":"Show"} ${t} sections"><svg class="i" viewBox="0 0 24 24" style="transform:rotate(${open?0:-90}deg)">${I.chev}</svg></button></div>${open?`<div class="nsub">${kids()}</div>`:""}</div>`;};
+ const sg=taskSuggestions().length,ot=openTasks().length;
+ const topic=(S.set.buckets||[]).length?bucketData("topic"):[];
  return `<nav class="nav" aria-label="Main">
   <div class="logo"><span class="mark">W</span><span class="w">Workbench</span></div>
-  ${item("dashboard","grid","Dashboard",st.today.length||"")}
-  ${item("inbox","inbox","Inbox",st.open.length+st.ready.length||"")}
-  ${(()=>{const sg=taskSuggestions().length,ot=openTasks().length;return item("tasks","task","Tasks",sg||ot||"",sg>0);})()}
+  <div class="nav-sc">
+  ${grp("dashboard","grid","Dashboard","#/dashboard",v==="dashboard"||v==="buckets",st.today.length||"",false,()=>sub("#/dashboard","Overview","",v==="dashboard")+sub("#/buckets","Buckets",topic.length||"",v==="buckets"))}
+  ${grp("inbox","inbox","Inbox","#/inbox/all",v==="inbox",st.open.length+st.ready.length||"",false,()=>
+   QUEUES.map(([k,l])=>sub(`#/inbox/${k}`,l,k==="done"?"":queueCount(k)||"",rq===k,Q_DOT[k],k==="approval"&&queueCount(k)>0)).join("")
+   +(topic.length?`<div class="lbl3">Buckets</div>`+topic.map(d=>sub(`#/inbox/g-${d.b.id}`,d.b.name,d.active.length||"",rq==="g-"+d.b.id,d.b.color)).join(""):""))}
+  ${grp("tasks","task","Tasks","#/tasks",v==="tasks",sg||ot||"",sg>0,()=>sub("#/tasks","To do",ot||"",v==="tasks"&&!r.id)+sub("#/tasks/suggested","Suggested",sg||"",v==="tasks"&&r.id==="suggested",null,sg>0)+sub("#/tasks/done","Done","",v==="tasks"&&r.id==="done"))}
   ${item("agents","bot","Agents",nq||"",nq>0)}
   <div class="sep"></div>
   ${item("priorities","sliders","Priorities")}
   ${item("activity","list","Activity")}
   ${item("accounts","user","Accounts")}
+  </div>
   <div class="bottom">
-   <div class="lbl2 mbs">Mailboxes</div>
-   ${S.accounts.map(a=>`<a class="mb mbs" href="#/accounts" data-tip="acct:${a.id}"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><span class="e">${esc(a.email)}</span><span class="sdot${a.error?" err":""}"></span></a>`).join("")}
-   ${S.accounts.length?"":`<a class="mb mbs" href="#/connect">${ic("plus")}<span class="e">Connect email</span></a>`}
+   ${S.accounts.length?(S.accounts.some(a=>a.error)?`<a class="mb mbs" href="#/accounts">${ic("info")}<span class="e">A mailbox needs reconnecting</span><span class="sdot err"></span></a>`:""):`<a class="mb mbs" href="#/connect">${ic("plus")}<span class="e">Connect email</span></a>`}
    ${S.mode==="demo"?`<button class="mb" data-a="exitdemo" title="Leave the demo">${ic("back")}<span class="e mbs">Exit demo</span></button>`:""}
   </div></nav>`;
 }
+function vBuckets(){return topHTML("Buckets")+`<div class="page bpage">${bannersHTML()}${bucketsHTML()}</div>`;}
 function topHTML(title,actions="",sub=""){
  return `<header class="top${sub?" tall":""}"><div class="top-in"><h1>${title}</h1><span id="topstatus">${statusHTML()}</span>${actions}
   ${live()?`<button class="ib" data-a="sync" aria-label="Check mail" title="Check mail" ${S.syncing?"disabled":""}>${ic("sync")}</button>`:""}
@@ -452,7 +461,7 @@ function rowHTML(e,opt={}){
  const sub=handled?esc(handledLabel(e)):`${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span style="overflow:hidden;text-overflow:ellipsis">${esc(a.ask&&a.ask!=="Nothing"?a.ask:a.summary||e.snippet||"")}</span>`;
  const badge=handled?"":e.status==="ready"?`<span class="pill p-ready" data-tip="A reply draft is saved in your mailbox">Draft</span>`:`<span class="score ${lane} num" data-tip="score:${e.id}">${e.by==="ai"||!live()||!S.ai.enabled?c.s.toFixed(1):"·"}</span>`;
  const tc=tasksFor(e.id).length;
- return `<div class="row${busy?" busy":""}${opt.sel?" sel":""}${e.unread&&!handled?" unread":""}" data-a="${opt.mail?"selmail":"open"}" data-id="${e.id}" tabindex="0">
+ return `<div class="row${busy?" busy":""}${opt.sel?" sel":""}${e.unread&&!handled?" unread":""}" data-a="${opt.mail?"selmail":"openmail"}" data-id="${e.id}"${opt.q?` data-q="${esc(opt.q)}"`:""} tabindex="0" title="${opt.mail?"":"Open in Inbox"}">
   <div class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</div>
   <div class="tx"><div class="l1"><span class="who" data-a="sender" data-v="${esc(name)}" data-tip="sender:${esc(name)}">${esc(name)}</span>${e.unread&&!handled?`<span class="udot" title="Unread"></span>`:""}${tc?`<span class="tcnt" data-tip="${esc(tasksFor(e.id).map(t=>t.title).join(" · "))}">${ic("task")}${tc}</span>`:""}${e.pinned?`<span class="pin" title="Pinned">${ic("pin")}</span>`:""}<span class="when" data-tip="${esc(fullDate(e.date))}">${when(e.date)}</span></div>
    <div class="sub">${esc(e.subject)}</div><div class="sum">${sub}</div></div>
@@ -629,20 +638,21 @@ function suggestionHTML(s,opts={}){
   <div class="tsa"><button class="btn pri sm" data-a="tsapprove" data-v="${esc(s.key)}">${ic("check")}${ed?"Add task":"Approve"}</button>${ed?`<button class="btn sm" data-a="tscancel">Cancel</button>`:`<button class="btn sm" data-a="tsedit" data-v="${esc(s.key)}">Edit</button>`}<button class="btn sm" data-a="tsdismiss" data-v="${esc(s.key)}">Dismiss</button></div></div>`;
 }
 function vTasks(){
+ const tab=S.route.id==="suggested"||S.route.id==="done"?S.route.id:"todo";
  const sugg=taskSuggestions();const open=S.tasks.filter(t=>isActive(t)||(t.status==="done"&&S.keepTasks.has(t.id))).sort(taskOrder);const todo=open.filter(isActive);const prog=todo.filter(t=>t.status==="in_progress");
- const done=S.tasks.filter(t=>t.status==="done"&&!S.keepTasks.has(t.id)).sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
+ const done=S.tasks.filter(t=>t.status==="done").sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
  const over=todo.filter(t=>t.due&&t.due<todayKey()),dueT=todo.filter(t=>t.due===todayKey()),week=todo.filter(t=>t.due&&t.due>=todayKey()&&t.due<=isoDay(7));
  const stat=(k,n,s,cls)=>`<div class="stat${cls?" "+cls:""}"><span class="k">${k}</span><span class="n">${n}</span><span class="s">${esc(s)}</span></div>`;
- return topHTML("Tasks",`<button class="btn sm" data-a="newtask">${ic("plus")}New task</button>`)+`<div class="page">${bannersHTML()}
-  <div class="stats">${stat("To do",todo.length,todo.length?`${prog.length} in progress · ${todo.filter(t=>!t.due).length} without a date`:"Nothing on your list")}${stat("Due today",dueT.length,dueT[0]?dueT[0].title:"Nothing due today",dueT.length?"hot":"")}${stat("Overdue",over.length,over[0]?over[0].title:"All on time",over.length?"hot":"")}${stat("Suggested",sugg.length,sugg.length?"Waiting for your approval":"No suggestions",sugg.length?"acc":"")}</div>
-  <div class="grid"><div class="col">
-   <section class="card"><div class="card-h"><h3>To do <span class="num faint">${todo.length}${open.length>todo.length?` · ${open.length-todo.length} just done`:""}</span></h3><span class="sp"><span class="note">${week.length} due in the next 7 days</span></span></div><div class="tkl">${open.map(taskRowHTML).join("")||emptyState("task","No tasks. All clear!","Add one from any email, or approve one of Claude's suggestions.")}</div></section>
-   ${done.length?`<section class="card"><div class="card-h"><button class="disc" data-a="toggledone" aria-expanded="${!!S.showDone}">${ic("chev")}Done <span class="num faint">${done.length}</span></button></div>${S.showDone?`<div class="tkl">${done.map(taskRowHTML).join("")}</div>`:""}</section>`:""}
-  </div><div class="col">
-   <section class="card"><div class="card-h"><h3>${ic("spark")}Suggested by Claude <span class="num faint">${sugg.length}</span></h3></div>
+ const title={todo:"Tasks",suggested:"Suggested tasks",done:"Done tasks"}[tab];
+ let body;
+ if(tab==="suggested")body=`<section class="card"><div class="card-h"><h3>${ic("spark")}Suggested by Claude <span class="num faint">${sugg.length}</span></h3></div>
     <div class="card-b" style="padding-bottom:4px"><p class="note">Claude suggests tasks as it sorts your mail. Nothing goes on your list until you approve it.</p></div>
-    <div class="tkl">${sugg.map(s=>suggestionHTML(s)).join("")||emptyState("spark","No suggestions right now","Claude suggests tasks as it sorts new mail.")}</div></section>
-  </div></div></div>`;
+    <div class="tkl">${sugg.map(s=>suggestionHTML(s)).join("")||emptyState("spark","No suggestions right now","Claude suggests tasks as it sorts new mail.")}</div></section>`;
+ else if(tab==="done")body=`<section class="card"><div class="card-h"><h3>Done <span class="num faint">${done.length}</span></h3></div><div class="tkl">${done.map(taskRowHTML).join("")||emptyState("check","Nothing finished yet","Tasks you tick off appear here.")}</div></section>`;
+ else body=`<div class="stats">${stat("To do",todo.length,todo.length?`${prog.length} in progress · ${todo.filter(t=>!t.due).length} without a date`:"Nothing on your list")}${stat("Due today",dueT.length,dueT[0]?dueT[0].title:"Nothing due today",dueT.length?"hot":"")}${stat("Overdue",over.length,over[0]?over[0].title:"All on time",over.length?"hot":"")}${stat("Due this week",week.length,week[0]?week[0].title:"Nothing else this week")}</div>
+  ${sugg.length?`<a class="infobox tnudge" href="#/tasks/suggested">${ic("spark")}<span>Claude suggested <b>${sugg.length}</b> task${sugg.length>1?"s":""} from your mail. Review them</span>${ic("right")}</a>`:""}
+  <section class="card"><div class="card-h"><h3>To do <span class="num faint">${todo.length}${open.length>todo.length?` · ${open.length-todo.length} just done`:""}</span></h3><span class="sp"><span class="note">Click a task to open it</span></span></div><div class="tkl">${open.map(taskRowHTML).join("")||emptyState("task","No tasks. All clear!","Add one from any email, or approve one of Claude's suggestions.")}</div></section>`;
+ return topHTML(title,`<button class="btn sm" data-a="newtask">${ic("plus")}New task</button>`)+`<div class="page tpage">${bannersHTML()}${body}</div>`;
 }
 
 /* ---------- buckets ---------- */
@@ -769,10 +779,10 @@ function bucketPanelHTML(d){
  const chips=STATUS.filter(([k])=>groups[k]).map(([k,l,c])=>`<button class="chip${filt===k?" on":""}" data-a="bstatus" data-v="${k}">${l}<span class="k num">${groups[k].length}</span></button>`).join("");
  const sec=([k,l,c])=>{const list=groups[k];if(!list||(filt&&filt!==k))return "";
   const sorted=list.slice().sort((x,y)=>k==="done"?(y.handledAt||"").localeCompare(x.handledAt||""):score(y).s-score(x).s);const lim=filt?200:6;
-  return `<div class="bps"><div class="bps-h${k==="urgent"?" red":""}">${l}<span class="num faint">${list.length}</span></div><div class="rows">${sorted.slice(0,lim).map(e=>hasApproval(e,ctx)?approvalEmailHTML(e):rowHTML(e)).join("")}</div>${list.length>lim?`<button class="more" data-a="bstatus" data-v="${k}">Show all ${list.length}</button>`:""}</div>`;};
+  return `<div class="bps"><div class="bps-h${k==="urgent"?" red":""}">${l}<span class="num faint">${list.length}</span></div><div class="rows">${sorted.slice(0,lim).map(e=>hasApproval(e,ctx)?approvalEmailHTML(e,"g-"+b.id):rowHTML(e,{q:"g-"+b.id})).join("")}</div>${list.length>lim?`<button class="more" data-a="bstatus" data-v="${k}">Show all ${list.length}</button>`:""}</div>`;};
  return `<section class="card bkp" id="bkpanel" aria-label="${esc(b.name)}" style="--bc:${b.color||"#8e8e93"}">
   <div class="bkp-h"><h3>${esc(b.name)}</h3><span class="sp"></span>
-   ${b.system?"":`<button class="btn sm" data-a="editbucket" data-id="${b.id}">${ic("sliders")}Edit</button>`}${b.virtual?"":`<button class="btn sm" data-a="bucketinbox" data-id="${b.id}" title="Open these emails in Inbox">${ic("inbox")}Inbox</button>`}<button class="ib" data-a="closebucket" aria-label="Close bucket">${ic("x")}</button></div>
+   ${b.system?"":`<button class="btn sm" data-a="editbucket" data-id="${b.id}">${ic("sliders")}Edit</button>`}<button class="btn sm pri" data-a="bucketinbox" data-id="${b.id}" title="Work through these emails in Inbox, most important first">${ic("right")}Work through</button><button class="ib" data-a="closebucket" aria-label="Close bucket">${ic("x")}</button></div>
   ${b.source==="ai"&&!b.kept?`<div class="infobox" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${ic("spark")}Claude suggested this bucket.<span class="sp" style="margin-left:auto"></span><button class="btn pri sm" data-a="keepbucket" data-id="${b.id}">Keep</button><button class="btn sm" data-a="editbucket" data-id="${b.id}">Edit</button><button class="btn sm" data-a="delbucket" data-id="${b.id}">Remove</button></div>`:""}
   <div class="bkp-sum bkt-box"><p>${esc(b.virtual?(d.active.length?summaryFallback(d):b.description):sm?sm.text:(b.description||"No summary yet."))}</p>${b.virtual?`<span class="note">${esc(b.description)}</span>`:`<span class="note">${sm?`${sm.by==="ai"?"Summary by Claude":"Automatic summary"} · ${when(sm.t)} · `:""}<button class="btn link sm" style="padding:0" data-a="refreshsum" data-id="${b.id}" ${S.sumBusy?"disabled":""}>${S.sumBusy?"Updating…":"Refresh summary"}</button></span>`}</div>
   <div class="bkp-stats">${[["Open",d.active.length,"Open and draft-ready email"],["Urgent",d.urgent,"In Today"],["For approval",d.approval,"Agent suggestions and suggested tasks"],["Unread",d.unread,"Not opened yet"],["Tasks",d.tasks,"Open tasks linked to these emails"],["Time needed",d.min?fmtMin(d.min):"·","Estimated time for everything except low priority"]].map(([k,v,t])=>`<div class="ms" data-tip="${esc(t)}"><div class="n num">${v}</div><div class="k">${k}</div></div>`).join("")}</div>
@@ -784,15 +794,15 @@ function apItemHTML(q,e,a,compact){
  const act=q.action||a.action;const hasText=act==="reply"||act==="send";const txt=S.qEdits[q.id]??String(q.param!=null?q.param:a.param||"").replace(/\{first\}/g,firstName(dispName(e)));const editing=S.qEditing===q.id;
  return `<div class="ap${compact?" compact":""}">
   <div class="ap-h"><span class="agico" style="background:${a.color};width:24px;height:24px;border-radius:7px">${ic("bot")}</span><span class="ap-t"><a href="#/agents/${a.id}" class="ap-an">${esc(a.name)}</a> wants to <b>${esc((ACT_L[act]||act).toLowerCase())}</b>${act==="delegate"&&q.param?` to ${esc(q.param)}`:act==="project"&&(q.param||a.param)?` under ${esc(q.param||a.param)}`:""}</span>${act==="send"?`<span class="pill p-now" data-tip="This sends an email. It can't be undone.">Sends</span>`:""}</div>
-  ${compact?"":`<button class="ap-e" data-a="open" data-id="${e.id}"><span class="who">${esc(dispName(e))}</span><span class="sub">${esc(e.subject)}</span></button>`}
+  ${compact?"":`<button class="ap-e" data-a="openmail" data-q="approval" data-id="${e.id}"><span class="who">${esc(dispName(e))}</span><span class="sub">${esc(e.subject)}</span></button>`}
   ${q.reason?`<div class="r">${esc(q.reason)}</div>`:""}
   ${hasText?(editing?`<textarea id="qe-${q.id}" data-qe="${q.id}" style="min-height:110px">${esc(txt)}</textarea>`:`<div class="dr"><span class="dr-t">${esc(txt)}</span></div>`):""}
-  <div class="ap-f"><button class="btn pri sm" data-a="approve" data-id="${q.id}">${ic("check")}${act==="send"?"Approve and send":"Approve"}</button>${hasText?`<button class="btn sm" data-a="qedit" data-id="${q.id}">${editing?"Done editing":"Edit"}</button>`:""}<button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button>${compact?"":`<button class="btn sm link" data-a="openmail" data-id="${e.id}">Open email</button>`}</div>
+  <div class="ap-f"><button class="btn pri sm" data-a="approve" data-id="${q.id}">${ic("check")}${act==="send"?"Approve and send":"Approve"}</button>${hasText?`<button class="btn sm" data-a="qedit" data-id="${q.id}">${editing?"Done editing":"Edit"}</button>`:""}<button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button>${compact?"":`<button class="btn sm link" data-a="openmail" data-q="approval" data-id="${e.id}">Open email</button>`}</div>
  </div>`;
 }
-function approvalEmailHTML(e){
+function approvalEmailHTML(e,q){
  const qs=queueItems().filter(x=>x.e.id===e.id);const ss=suggestionsFor(e.id);
- return rowHTML(e)+`<div class="apin">${qs.map(({q,a})=>apItemHTML(q,e,a,true)).join("")}${ss.map(s=>suggestionHTML(s,{noEmail:true})).join("")}</div>`;
+ return rowHTML(e,{q})+`<div class="apin">${qs.map(({q,a})=>apItemHTML(q,e,a,true)).join("")}${ss.map(s=>suggestionHTML(s,{noEmail:true})).join("")}</div>`;
 }
 
 /* ---------- daily rundown ---------- */
@@ -865,13 +875,13 @@ async function afterSort(){
 /* ---------- dashboard ---------- */
 function approvalsCard(){
  const items=queueItems();const sugg=taskSuggestions();const ready=compute().ready;const total=items.length+sugg.length+ready.length;
- const head=`<div class="card-h"><h3><span class="ldot" style="background:var(--accent)"></span>Needs your OK <span class="num faint">${total}</span></h3><span class="sp">${items.length>1?`<button class="btn sm pri" data-a="approveall" title="Approve every agent suggestion">Approve all agent actions</button>`:""}</span></div>`;
+ const head=`<div class="card-h"><h3><span class="ldot" style="background:var(--accent)"></span>Needs your OK <span class="num faint">${total}</span></h3><span class="sp">${total?`<button class="btn sm" data-a="goq" data-v="approval" data-start="1" title="Open each email with its suggestion, one at a time">One by one</button>`:""}${items.length>1?`<button class="btn sm pri" data-a="approveall" title="Approve every agent suggestion">Approve all agent actions</button>`:""}</span></div>`;
  if(!total)return `<section class="card" id="approvals">${head}${emptyState("check","No approvals needed, yay!","Agent actions, suggested tasks and drafts ready to send wait here for your OK.")}</section>`;
  const lim=S.showAllApprovals?99:3;
  return `<section class="card" id="approvals">${head}
   ${items.length?`<div class="aps-h">${ic("bot")}Agent actions <span class="num faint">${items.length}</span></div><div class="apl">${items.slice(0,lim).map(({q,e,a})=>apItemHTML(q,e,a,false)).join("")}</div>`:""}
   ${sugg.length?`<div class="aps-h">${ic("spark")}Suggested tasks <span class="num faint">${sugg.length}</span><span class="note" style="margin-left:auto">Added only when you approve</span></div><div class="tkl">${sugg.slice(0,lim).map(s=>suggestionHTML(s)).join("")}</div>`:""}
-  ${ready.length?`<div class="aps-h">${ic("send")}Drafts ready to send <span class="num faint">${ready.length}</span><span class="note" style="margin-left:auto">Saved in your mailbox</span></div><div class="rows">${ready.slice(0,lim).map(e=>rowHTML(e)).join("")}</div>`:""}
+  ${ready.length?`<div class="aps-h">${ic("send")}Drafts ready to send <span class="num faint">${ready.length}</span><span class="note" style="margin-left:auto">Saved in your mailbox</span></div><div class="rows">${ready.slice(0,lim).map(e=>rowHTML(e,{q:"approval"})).join("")}</div>`:""}
   ${items.length>lim||sugg.length>lim||ready.length>lim?`<button class="more" data-a="moreapprovals">${S.showAllApprovals?"Show fewer":"Show all"}</button>`:""}</section>`;
 }
 function tasksCard(){
@@ -888,18 +898,18 @@ function pulseHTML(st){
  const owed=st.open.filter(e=>["request","decision","meeting"].includes(e._c.a.type)&&e._lane!=="letgo");
  const urgent=st.today;const tipList=list=>"list:"+list.slice(0,5).map(e=>e.id).join(",");
  const agentN=S.log.filter(l=>l.agentId&&isToday(l.t)&&!l.undone).reduce((s,l)=>s+((l.emailIds||[]).length||1),0);
- const m=(label,n,sub,a,v,tip,cls)=>`<button class="pm${cls&&n?" "+cls:""}" data-a="${a}" data-v="${v}" data-tip="${esc(tip)}"><span class="pm-n num">${n}</span><span class="pm-t"><span class="pm-k">${label}</span><span class="pm-s">${esc(sub)}</span></span></button>`;
+ const m=(label,n,sub,a,v,tip,cls)=>`<button class="pm${cls&&n?" "+cls:""}" data-a="${a}" data-v="${v}"${a==="goq"&&n?' data-start="1"':""} data-tip="${esc(tip)}"><span class="pm-n num">${n}</span><span class="pm-t"><span class="pm-k">${label}</span><span class="pm-s">${esc(sub)}</span></span></button>`;
  const w=S.set.w,tot=(w.u+w.i+w.e)||1;
  return `<div class="pulse" role="region" aria-label="Today at a glance">
-  <button class="pg" data-a="scrollto" data-v="today" data-tip="${esc(`${doneToday} handled today${agentN?`, ${agentN} by your agents`:""}. ${left} still in Do today, about ${fmtMin(st.used)} of your ${fmtMin(S.set.budget)}.`)}">
+  <button class="pg" data-a="goq" data-v="today" data-start="1" data-tip="${esc(`${doneToday} handled today${agentN?`, ${agentN} by your agents`:""}. ${left} still in Do today, about ${fmtMin(st.used)} of your ${fmtMin(S.set.budget)}.`)}">
    <span class="pg-h"><span class="pm-k">Today's progress</span><span class="num pg-p">${left?`${doneToday} of ${doneToday+left} done`:doneToday?"All done":"Nothing due"}</span></span>
    <span class="pg-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>
    <span class="pm-s">${left?`${fmtMin(st.used)} left of ${fmtMin(S.set.budget)}`:"Do today is clear"}</span></button>
   <span class="pdiv" aria-hidden="true"></span>
-  ${m("Urgent",urgent.length,urgent.length?"In Do today":"Nothing urgent","scrollto","today",urgent.length?tipList(urgent):"Nothing urgent right now","red")}
-  ${m("Needs your OK",appr,appr?[q&&`${q} agent`,sg&&`${sg} task${sg>1?"s":""}`,rd&&`${rd} draft${rd>1?"s":""}`].filter(Boolean).join(" · "):"All reviewed","scrollto","approvals",q?"queue:":"Agent actions, suggested tasks and drafts ready to send","blue")}
-  ${m("Tasks",tk.length,tk.length?[prog&&`${prog} in progress`,over&&`${over} overdue`].filter(Boolean).join(" · ")||"None started":"List is clear","scrollto","taskscard",tk.length?"Your open tasks":"No open tasks",over?"red":"")}
-  ${m("Replies owed",owed.length,owed.length?`Oldest ${when(owed.slice().sort((a,b)=>a.date.localeCompare(b.date))[0].date)}`:"All caught up","filter","reply",owed.length?tipList(owed):"No replies owed")}
+  ${m("Urgent",urgent.length,urgent.length?"In Do today":"Nothing urgent","goq","today",urgent.length?tipList(urgent):"Nothing urgent right now","red")}
+  ${m("Needs your OK",appr,appr?[q&&`${q} agent`,sg&&`${sg} task${sg>1?"s":""}`,rd&&`${rd} draft${rd>1?"s":""}`].filter(Boolean).join(" · "):"All reviewed","goq","approval",q?"queue:":"Agent actions, suggested tasks and drafts ready to send","blue")}
+  ${m("Tasks",tk.length,tk.length?[prog&&`${prog} in progress`,over&&`${over} overdue`].filter(Boolean).join(" · ")||"None started":"List is clear","nav","tasks",tk.length?"Your open tasks":"No open tasks",over?"red":"")}
+  ${m("Replies owed",owed.length,owed.length?`Oldest ${when(owed.slice().sort((a,b)=>a.date.localeCompare(b.date))[0].date)}`:"All caught up","goq","replies",owed.length?tipList(owed):"No replies owed")}
   <span class="sp"></span>
   <span class="pctl">
    <button class="chip" data-a="budget" data-tip="Time you have for email today. Do today only holds what fits.">${ic("clock")}<span class="num">${fmtMin(S.set.budget)}</span></button>
@@ -907,24 +917,31 @@ function pulseHTML(st){
    <button class="chip" data-a="weights" data-tip="How email is ranked: urgency ${Math.round(w.u/tot*100)}%, importance ${Math.round(w.i/tot*100)}%, quick wins ${Math.round(w.e/tot*100)}%">${ic("sliders")}<span>${presetOf(S.set.w)?PRESETS[presetOf(S.set.w)][0]:"Custom"}</span></button>
   </span></div>`;
 }
+function bucketsBriefHTML(){
+ const data=bucketData("topic");const none=!(S.set.buckets||[]).length;
+ const head=`<div class="card-h"><h3>${ic("grid")}Buckets <span class="num faint">${none?0:data.length}</span></h3><span class="sp"><a class="btn sm" href="#/buckets" title="Summaries, stats and views by urgency, importance, effort, type and mailbox">All views</a></span></div>`;
+ if(none)return `<section class="card">${head}<div class="card-b"><p class="muted">Buckets group your mail by project, client or kind of mail.</p><div>${S.bkBusy?`<span class="status"><span class="spin"></span>Claude is grouping your mail</span>`:`<button class="btn pri sm" data-a="suggestbuckets">${ic("spark")}Suggest buckets</button>`}</div></div></section>`;
+ return `<section class="card">${head}<div class="bbrief">${data.map(d=>{const sm=(S.set.bucketSummaries||{})[d.b.id];const bits=[d.urgent&&`<b class="red">${d.urgent} urgent</b>`,d.approval&&`${d.approval} for your OK`,d.unread&&`${d.unread} unread`].filter(Boolean).join(" · ");
+  return `<button class="bb" data-a="goq" data-v="g-${d.b.id}" data-start="${d.active.length?1:""}" style="--bc:${d.b.color||"#8e8e93"}" data-tip="${esc((sm?sm.text:d.b.description)||"")}"><span class="bb-x"><span class="bb-n">${esc(d.b.name)}</span><span class="bb-s">${bits||(d.active.length?"Nothing pressing":"All clear")}</span></span><span class="bb-c num">${d.active.length}</span></button>`;}).join("")}</div></section>`;
+}
 function vDashboard(){
  const st=compute();
  const name=S.user&&S.user.name?firstName(S.user.name):"";
  const hour=new Date().getHours();const greet=hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";
  const q=queueItems();const feed=S.log.filter(l=>l.agentId).slice(0,5);
- const laneLink=(k,list)=>`<button class="lnk" data-a="lane" data-v="${k}" title="${esc(LANE_TIP[k])}" data-tip="${list.length?"list:"+list.slice(0,5).map(e=>e.id).join(","):"Nothing here"}"><span class="ldot" style="background:${LANE_C[k]}"></span>${LANE[k]}<b class="num">${list.length}</b>${list.length&&k!=="letgo"?`<span class="faint num">${fmtMin(list.reduce((s,e)=>s+(e._c.a.min||5),0))}</span>`:""}</button>`;
+ const laneLink=(k,list)=>`<button class="lnk" data-a="goq" data-v="${k}" title="${esc(LANE_TIP[k])}" data-tip="${list.length?"list:"+list.slice(0,5).map(e=>e.id).join(","):"Nothing here"}"><span class="ldot" style="background:${LANE_C[k]}"></span>${LANE[k]}<b class="num">${list.length}</b>${list.length&&k!=="letgo"?`<span class="faint num">${fmtMin(list.reduce((s,e)=>s+(e._c.a.min||5),0))}</span>`:""}</button>`;
  return topHTML(`${greet}${name?", "+esc(name):""}`,"",pulseHTML(st))+`<div class="page dash">${bannersHTML()}
   ${live()&&!S.accounts.length?`<div class="card"><div class="card-b" style="padding:20px"><h3>Connect an inbox to get started</h3><p class="muted">Workbench needs at least one mailbox to sort.</p><div><a class="btn pri" href="#/connect">${ic("plus")}Connect email</a></div></div></div>`:""}
   ${rundownHTML()}
   <div class="grid"><div class="col">
-   <section class="card" id="today"><div class="card-h"><h3><span class="ldot" style="background:var(--now)"></span>Do today <span class="num faint">${st.today.length}</span></h3><span class="sp"><span class="note num">${fmtMin(st.used)} of ${fmtMin(S.set.budget)}</span></span></div>
-    ${st.today.length?`<div class="rows">${st.today.map(e=>rowHTML(e)).join("")}</div>`:emptyState("check","All done for today!",st.open.length?"Nothing urgent needs you. Check Do later when you have a moment.":"Your inbox is clear.")}
+   <section class="card" id="today"><div class="card-h"><h3><span class="ldot" style="background:var(--now)"></span>Do today <span class="num faint">${st.today.length}</span></h3><span class="sp"><span class="note num">${fmtMin(st.used)} of ${fmtMin(S.set.budget)}</span>${st.today.length?`<button class="btn pri sm" data-a="goq" data-v="today" data-start="1" title="Open the first email and work down the list">${ic("right")}Start</button>`:""}</span></div>
+    ${st.today.length?`<div class="rows">${st.today.map(e=>rowHTML(e,{q:"today"})).join("")}</div>`:emptyState("check","All done for today!",st.open.length?"Nothing urgent needs you. Check Do later when you have a moment.":"Your inbox is clear.")}
     <div class="lanefoot"><span class="note">The rest of your inbox</span>${laneLink("plan",st.lanes.plan)}${laneLink("delegate",st.lanes.delegate)}${laneLink("letgo",st.lanes.letgo)}</div></section>
    ${tasksCard()}
   </div><div class="col">
    ${approvalsCard()}
   </div></div>
-  ${bucketsHTML()}
+  ${bucketsBriefHTML()}
   <div class="sec-h2"><h2>Behind the scenes</h2><span class="note">What you and your agents have been doing</span></div>
   <div class="grid3">
    <section class="card"><div class="card-h"><h3>Last 7 days</h3><span class="sp"><span class="note num">${weekSeries().reduce((s,x)=>s+x.handled,0)} handled</span></span></div><div class="card-b">${weekChart()}</div></section>
@@ -936,49 +953,112 @@ function vDashboard(){
   </div></div>`;
 }
 
+/* ---------- work queues ---------- */
+/* A queue is a focused list to work through: one per lane, plus every bucket ("g-<group id>"). */
+const QUEUES=[["today","Do today"],["approval","Needs your OK"],["replies","Replies owed"],["plan","Do later"],["delegate","Hand off"],["letgo","Low priority"],["all","All mail"],["drafts","Drafts"],["done","Done"]];
+const Q_BLURB={today:"Urgent and important, sized to your time today. Work top to bottom.",approval:"Agent actions, suggested tasks and drafts waiting on you.",replies:"People waiting on a reply, a decision or a meeting answer.",plan:"Important, but they can wait. Give them a slot this week.",delegate:"Someone else could handle these.",letgo:"Low urgency and importance. Safe to archive.",all:"Every open email, newest first.",drafts:"Replies saved in your mailbox, ready to send.",done:"What you and your agents have handled, newest first."};
+const Q_DOT={today:"var(--now)",approval:"var(--accent)",replies:"var(--plan)",plan:"var(--plan)",delegate:"var(--del)",letgo:"var(--go)",drafts:"var(--ready)",all:"var(--faint)",done:"var(--faint)"};
+const WORK_Q=["today","approval","replies","plan","delegate","letgo"];
+const isQueue=k=>!!k&&(QUEUES.some(q=>q[0]===k)||k.startsWith("g-"));
+const owedTest=e=>["request","decision","meeting"].includes((e._c||score(e)).a.type)&&e._lane!=="letgo";
+const gView=gid=>{const p=gid.split("-")[0];return p!=="topic"&&BVIEWS.some(v=>v[0]===p)?p:"topic";};
+function qGroup(k){const gid=k.slice(2);return bucketData(gView(gid)).find(d=>d.b.id===gid)||null;}
+function qLabel(k){if(k&&k.startsWith("g-")){const d=qGroup(k);return d?d.b.name:"Bucket";}const q=QUEUES.find(x=>x[0]===k);return q?q[1]:"Inbox";}
+function queueEmails(k){
+ const st=compute();const rank=(a,b)=>score(b).s-score(a).s;const newest=(a,b)=>b.date.localeCompare(a.date);
+ if(k&&k.startsWith("g-")){const d=qGroup(k);return d?d.active.slice().sort((a,b)=>(b._today-a._today)||rank(a,b)):[];}
+ switch(k){
+  case "today":return st.today.slice();
+  case "approval":{const ctx=statusCtx();const ap=[...st.open,...st.ready].filter(e=>hasApproval(e,ctx)).sort(rank);return [...ap,...st.ready.filter(e=>!ap.includes(e)).sort(newest)];}
+  case "replies":return st.open.filter(owedTest).sort((a,b)=>(b._today-a._today)||rank(a,b));
+  case "plan":case "delegate":case "letgo":return st.lanes[k].slice();
+  case "drafts":return st.ready.slice().sort(newest);
+  case "done":return st.handled.slice();
+  default:return [...st.open,...st.ready].sort(newest);
+ }
+}
+const queueCount=k=>queueEmails(k).length;
+function queueClearHTML(qk){
+ const next=WORK_Q.filter(k=>k!==qk).map(k=>[k,queueCount(k)]).filter(x=>x[1]).slice(0,3);
+ return `<div class="read-empty"><div class="qclear">${emptyState("check",`${esc(qLabel(qk))} is clear`,next.length?"Nice work. Here's what's waiting next.":"Nothing is waiting on you. Nice work!")}
+  ${next.length?`<div class="qnext">${next.map(([k,n])=>`<button class="btn sm" data-a="goq" data-v="${k}" data-start="1"><span class="ldot" style="background:${Q_DOT[k]}"></span>${esc(qLabel(k))}<span class="num faint">${n}</span></button>`).join("")}</div>`:""}
+  <a class="btn sm link" href="#/dashboard">Back to dashboard</a></div></div>`;
+}
+
 /* ================= inbox ================= */
-function inboxList(){
- const B=S.box;compute();
- let list=S.emails.filter(e=>B.folder==="inbox"?OPEN(e)||e.status==="ready":B.folder==="drafts"?e.status==="ready":HANDLED.includes(e.status));
+function inboxList(base){
+ const B=S.box;let list=base||queueEmails(B.queue);
  if(B.account!=="all")list=list.filter(e=>e.accountId===B.account);
- if(B.filter){const f=B.filter;list=list.filter(e=>{const a=(e._c||score(e)).a;return f.kind==="project"?(a.project||"General")===f.v:f.kind==="sender"?dispName(e)===f.v:f.kind==="decision"?a.type==="decision":f.kind==="reply"?["request","decision","meeting"].includes(a.type)&&OPEN(e)&&e._lane!=="letgo":f.kind==="type"?TYPE_L[a.type]===f.v:f.kind==="org"?orgOf(e)===f.v:f.kind==="bucket"?bucketIdOf(e)===f.v:true;});}
+ if(B.filter){const f=B.filter;list=list.filter(e=>{const a=(e._c||score(e)).a;return f.kind==="project"?(a.project||"General")===f.v:f.kind==="sender"?dispName(e)===f.v:f.kind==="decision"?a.type==="decision":f.kind==="type"?TYPE_L[a.type]===f.v:f.kind==="org"?orgOf(e)===f.v:f.kind==="bucket"?bucketIdOf(e)===f.v:true;});}
  if(B.q){const q=B.q.toLowerCase();list=list.filter(e=>(dispName(e)+" "+e.fromEmail+" "+e.subject+" "+(e.body||e.snippet||"")+" "+(e.ai&&e.ai.project||"")).toLowerCase().includes(q));}
- return list.sort((a,b)=>B.folder==="done"?(b.handledAt||"").localeCompare(a.handledAt||""):b.date.localeCompare(a.date));
+ return list;
 }
 function vInbox(){
- const B=S.box;B.sel=S.route.id||null;
- const list=inboxList();const sel=B.sel&&byId(B.sel);
- const cnt=f=>S.emails.filter(e=>(B.account==="all"||e.accountId===B.account)&&(f==="inbox"?OPEN(e)||e.status==="ready":f==="drafts"?e.status==="ready":HANDLED.includes(e.status))).length;
- const f=B.filter;const fl=f?{project:"Project",sender:"From",decision:"Decisions",reply:"Replies owed",type:"Type",org:"Organisation",bucket:"Bucket"}[f.kind]+(f.v?": "+(f.kind==="bucket"?((bucketById(f.v)||OTHER).name):f.v):""):"";
+ const B=S.box;const r=S.route;
+ let qk=isQueue(r.id)?r.id:(B.queue||"all");let sid=isQueue(r.id)?r.tab:r.id;
+ if(qk.startsWith("g-")&&!qGroup(qk))qk="all";
+ if(B.queue!==qk){B.lastIds=null;B.queue=qk;}
+ const base=queueEmails(qk);const list=inboxList(base);const ids=list.map(e=>e.id);
+ // After you act on an email it leaves the queue, so move on to the next one in the same place.
+ if(sid&&!base.some(e=>e.id===sid)&&B.lastIds&&B.lastIds.includes(sid)){
+  const i=B.lastIds.indexOf(sid);const nx=B.lastIds.slice(i+1).find(x=>ids.includes(x))||B.lastIds.slice(0,i).reverse().find(x=>ids.includes(x))||null;
+  sid=nx;B.compose=null;S.confirmSend=null;history.replaceState(null,"","#/inbox/"+[qk,nx].filter(Boolean).map(encodeURIComponent).join("/"));S.route=parseRoute();
+ }
+ B.lastIds=ids;B.sel=sid||null;
+ const sel=B.sel&&byId(B.sel);const st=compute();
+ const f=B.filter;const fl=f?{project:"Project",sender:"From",decision:"Decisions",type:"Type",org:"Organisation",bucket:"Bucket"}[f.kind]+(f.v?": "+(f.kind==="bucket"?((bucketById(f.v)||OTHER).name):f.v):""):"";
+ const g=qk.startsWith("g-")?qGroup(qk):null;const label=qLabel(qk);
+ const mins=list.filter(OPEN).reduce((s,e)=>s+((e._c||score(e)).a.min||5),0);
+ const time=qk==="today"?`${fmtMin(st.used)} of ${fmtMin(S.set.budget)}`:["done","all","drafts","letgo"].includes(qk)||!mins?"":`about ${fmtMin(mins)}`;
+ const bulk=qk==="letgo"&&list.length?`<button class="btn sm" data-a="lane" data-v="letgo">Archive all…</button>`:qk==="delegate"&&list.length?`<button class="btn sm" data-a="lane" data-v="delegate">Forward all…</button>`:qk==="approval"&&queueItems().length>1?`<button class="btn sm" data-a="approveall">Approve all agent actions</button>`:"";
+ const blurb=g?(g.b.virtual?g.b.description:((S.set.bucketSummaries||{})[g.b.id]||{}).text||g.b.description||"Email in this bucket, most important first."):Q_BLURB[qk]||"";
+ const qopts=`${QUEUES.map(([k,l])=>`<option value="${k}" ${qk===k?"selected":""}>${l}</option>`).join("")}${(S.set.buckets||[]).length?`<optgroup label="Buckets">${[...S.set.buckets,OTHER].map(b=>`<option value="g-${b.id}" ${qk==="g-"+b.id?"selected":""}>${esc(b.name)}</option>`).join("")}</optgroup>`:""}${g&&g.b.virtual?`<option value="${qk}" selected>${esc(g.b.name)}</option>`:""}`;
+ const empty=B.q?emptyState("search","Nothing matches your search","Try a sender, subject or project."):f?emptyState("search","Nothing matches this filter","Clear the filter to see the whole list."):emptyState("check",`${esc(label)} is clear`,qk==="done"?"Emails you finish appear here.":"Nothing here right now.");
+ const readPane=sel?readingHTML(sel,list):list.length?`<div class="read-empty"><div class="qclear">${emptyState("mail",`${list.length} in ${esc(label)}`,blurb)}<div class="qnext"><button class="btn pri sm" data-a="selmail" data-id="${list[0].id}">${ic("right")}Start with the first</button></div><p class="note">J and K move between emails. E marks done. R replies.</p></div></div>`:queueClearHTML(qk);
  return topHTML("Inbox")+`<div class="mail${sel?" reading":""}">
-  <section class="list" aria-label="Messages"><div class="lh">
-   <label class="search">${ic("search")}<input id="mq" value="${esc(B.q)}" placeholder="Search mail" aria-label="Search mail"></label>
-   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg">${[["inbox","Inbox"],["drafts","Drafts"],["done","Done"]].map(([k,v])=>`<button data-a="folder" data-v="${k}" aria-pressed="${B.folder===k}">${v} <span class="num faint">${cnt(k)}</span></button>`).join("")}</div>
-    ${(S.set.buckets||[]).length?`<select class="in" id="mbkt" style="width:auto;height:30px;padding:2px 8px" aria-label="Bucket"><option value="">All buckets</option>${[...S.set.buckets,OTHER].map(b=>`<option value="${b.id}" ${f&&f.kind==="bucket"&&f.v===b.id?"selected":""}>${esc(b.name)}</option>`).join("")}</select>`:""}
-    ${S.accounts.length>1?`<select class="in" id="macct" style="width:auto;height:30px;padding:2px 8px" aria-label="Mailbox"><option value="all">All mailboxes</option>${S.accounts.map(a=>`<option value="${a.id}" ${B.account===a.id?"selected":""}>${esc(a.email)}</option>`).join("")}</select>`:""}</div>
+  <section class="list" aria-label="${esc(label)}"><div class="lh">
+   <div class="qh"><span class="ldot" style="background:${g?g.b.color:Q_DOT[qk]||"var(--faint)"}"></span><h2>${esc(label)}</h2><span class="num faint">${list.length}</span>${time?`<span class="note num">${time}</span>`:""}<span class="sp"></span>${bulk}</div>
+   ${blurb?`<p class="note qb">${esc(blurb)}</p>`:""}
+   <div class="qrow"><select class="in qsel" id="mqsel" aria-label="Choose a list">${qopts}</select><label class="search">${ic("search")}<input id="mq" value="${esc(B.q)}" placeholder="Search this list" aria-label="Search this list"></label>
+    ${S.accounts.length>1?`<select class="in macct" id="macct" style="width:auto;height:32px;padding:2px 8px;max-width:170px" aria-label="Mailbox"><option value="all">All mailboxes</option>${S.accounts.map(a=>`<option value="${a.id}" ${B.account===a.id?"selected":""}>${esc(a.email)}</option>`).join("")}</select>`:""}</div>
    ${f?`<div><button class="chip on" data-a="clearboxfilter">${esc(fl)} ${ic("x")}</button></div>`:""}
-  </div><div class="lb">${list.map(e=>rowHTML(e,{mail:true,sel:e.id===B.sel})).join("")||(B.q?emptyState("search","Nothing matches your search","Try a sender, subject or project."):B.folder==="drafts"?emptyState("send","No drafts waiting","Drafts you save appear here."):B.folder==="done"?emptyState("check","Nothing handled yet","Emails you finish this week appear here."):emptyState("check","Inbox clear. Nice!","New mail appears here when it syncs."))}</div></section>
-  <section class="read" aria-label="Message">${sel?readingHTML(sel):`<div class="read-empty">${emptyState("mail","Select an email to read it","Pick one from the list. Use Details for why it ranks where it does.")}</div>`}</section></div>`;
+  </div><div class="lb">${list.map(e=>rowHTML(e,{mail:true,sel:e.id===B.sel})).join("")||empty}</div></section>
+  <section class="read" aria-label="Message">${readPane}</section></div>`;
 }
-function readingHTML(e){
+function popWhy(e){
+ const c=score(e),a=c.a,tot=c.s||1,open=OPEN(e);
+ const bar=(l,v,col)=>`<div class="b"><span>${l}</span><span class="tr"><i style="width:${v*10}%;background:${col}"></i></span><span class="num">${v.toFixed(1)}</span></div>`;
+ return `<h3>${open?`Why it's in ${esc(LANE[laneOf(e)]||"")}`:"How it was ranked"}</h3>
+  <div class="bars">${bar("Urgency",c.U,"var(--now)")}${bar("Importance",c.I,"var(--plan)")}${bar("Effort",c.E,"var(--del)")}</div>
+  <p class="note">Score ${c.s.toFixed(1)}: ${Math.round(c.cu/tot*100)}% urgency, ${Math.round(c.ci/tot*100)}% importance, ${Math.round(c.ce/tot*100)}% quick win. About ${fmtMin(a.min||5)}. ${e.by==="ai"?"Scored by Claude.":"Scored by basic rules."}${e._over?" Urgent, but it doesn't fit today's time, so it's in Do later.":""}</p>
+  ${(a.reasons||[]).length||c.applied.length?`<div class="chips">${(a.reasons||[]).map(r=>`<span class="tag">${esc(r)}</span>`).join("")}${c.applied.map(r=>`<span class="tag" style="color:var(--accent)">${esc(r.label)}</span>`).join("")}</div>`:""}
+  <div class="fld"><label class="lbl" for="sh-bucket">Bucket</label><select class="in" id="sh-bucket" data-id="${e.id}">${[...(S.set.buckets||[]),OTHER].map(b=>`<option value="${b.id}" ${bucketIdOf(e)===b.id?"selected":""}>${esc(b.name)}</option>`).join("")}</select></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="weight" data-v="up" data-id="${e.id}">Rank ${esc(firstName(dispName(e)))} higher</button><button class="btn sm" data-a="weight" data-v="down" data-id="${e.id}">Lower</button><button class="btn sm link" data-a="weights">Ranking mix</button></div>`;
+}
+function readingHTML(e,list){
  const c=score(e),a=c.a,name=dispName(e),acc=accById(e.accountId);const o=S.box.orig[e.id];const open=OPEN(e),ready=e.status==="ready";const busy=S.busy.has(e.id);
  const comp=S.box.compose&&S.box.compose.id===e.id?S.box.compose:null;const lane=laneOf(e);
+ const ids=(list||[]).map(x=>x.id);const pos=ids.indexOf(e.id);
  const tb=`<div class="toolbar">
   <button class="btn sm mobile-back" data-a="closemail" aria-label="Back to list">${ic("back")}</button>
-  ${open||ready?`<button class="btn sm" data-a="reply" data-id="${e.id}">${ic("reply")}Reply</button><button class="btn sm" data-a="forward" data-id="${e.id}">${ic("fwd")}Forward</button>`:""}
-  ${open?`<button class="btn sm" data-a="q-done" data-id="${e.id}" ${busy?"disabled":""} title="Archive it as handled">${ic("check")}Done</button><button class="btn sm" data-a="q-letgo" data-id="${e.id}" ${busy?"disabled":""} title="Archive it, no reply needed">${ic("letgo")}Archive</button><button class="btn sm" data-a="q-pin" data-id="${e.id}" title="${e.provider==="microsoft"?"Flag":"Star"} it and pin to Today">${ic("pin")}${e.pinned?"Unpin":"Pin"}</button>`:""}
+  <span class="qnav"><button class="ib" data-a="qnav" data-v="-1" ${pos<=0?"disabled":""} aria-label="Previous email" title="Previous (K)"><svg class="i" viewBox="0 0 24 24" style="transform:rotate(90deg)">${I.chev}</svg></button><button class="ib" data-a="qnav" data-v="1" ${pos<0||pos>=ids.length-1?"disabled":""} aria-label="Next email" title="Next (J)"><svg class="i" viewBox="0 0 24 24" style="transform:rotate(-90deg)">${I.chev}</svg></button><span class="qpos num">${pos>=0?`${pos+1} of ${ids.length}`:"Not in this list"}</span></span>
+  ${open||ready?`<button class="btn sm" data-a="reply" data-id="${e.id}" title="Reply (R)">${ic("reply")}Reply</button><button class="btn sm" data-a="forward" data-id="${e.id}">${ic("fwd")}Forward</button>`:""}
+  ${open?`<button class="btn sm" data-a="q-done" data-id="${e.id}" ${busy?"disabled":""} title="Archive it as handled (E)">${ic("check")}Done</button><button class="btn sm" data-a="q-letgo" data-id="${e.id}" ${busy?"disabled":""} title="Archive it, no reply needed">${ic("letgo")}Archive</button><button class="btn sm" data-a="q-pin" data-id="${e.id}" title="${e.provider==="microsoft"?"Flag":"Star"} it and pin to Do today">${ic("pin")}${e.pinned?"Unpin":"Pin"}</button>`:""}
   ${HANDLED.includes(e.status)&&e.status!=="sent"&&e.status!=="delegated"?`<button class="btn sm" data-a="reopen" data-id="${e.id}">${ic("back")}Move back to inbox</button>`:""}
-  ${open||ready?`<button class="btn sm" data-a="addtask" data-id="${e.id}">${ic("task")}Add task</button>`:""}<span style="margin-left:auto"></span><button class="btn sm" data-a="open" data-id="${e.id}" title="Why it ranks where it does">${ic("info")}Details</button></div>`;
+  ${open||ready?`<button class="btn sm" data-a="addtask" data-id="${e.id}">${ic("task")}Add task</button>`:""}</div>`;
  let bodyHTML;
  if(o&&o.loading)bodyHTML=`<div class="plain muted">Loading message…</div>`;
  else if(o&&o.html&&!S.box.plain)bodyHTML=`<iframe class="frame" title="Message" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="${esc(frameDoc(o.html))}" style="height:min(70vh,900px)"></iframe>`;
  else bodyHTML=`<div class="plain">${esc((o&&o.text)||e.body||e.snippet||"(no text)")}</div>`;
+ const qs=queueItems().filter(x=>x.e.id===e.id);
+ const to=(o&&o.to)||e.to||"";
  return tb+`<div class="rd">
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${open?`<span class="pill p-${lane}" data-tip="score:${e.id}"><span class="d"></span>${LANE[lane]||lane} · ${c.s.toFixed(1)}</span>`:`<span class="pill p-${ready?"ready":"off"}">${ready?"Draft saved":esc(handledLabel(e))}</span>`}${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span class="tag">${TYPE_L[a.type]||"Email"}</span>${a.ask&&a.ask!=="Nothing"?`<span class="tag" data-tip="${esc(a.summary||"")}">Asks: ${esc(a.ask)}</span>`:""}</div>
+  <div class="triage">${open?`<button class="pill p-${lane}" data-a="why" data-id="${e.id}" data-tip="score:${e.id}"><span class="d"></span>${LANE[lane]||lane} · ${c.s.toFixed(1)}</button>`:`<span class="pill p-${ready?"ready":"off"}">${ready?"Draft saved":esc(handledLabel(e))}</span>`}${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span class="tag">${TYPE_L[a.type]||"Email"}</span>${a.ask&&a.ask!=="Nothing"?`<span class="tag tg-ask" data-tip="${esc(a.summary||"")}">Asks: ${esc(a.ask)}</span>`:""}<button class="btn sm link why" data-a="why" data-id="${e.id}" title="Why it ranks here, and how to change it">${ic("info")}Why here?</button></div>
   <h2>${esc(e.subject)}</h2>
-  <div style="display:flex;gap:12px;align-items:flex-start"><div class="av" style="background:${avColor(name)}">${esc(initials(name))}</div>
-   <div class="hdrs" style="flex:1;min-width:0"><span>From</span><span><button class="who" style="font-weight:600" data-a="sender" data-v="${esc(name)}">${esc(name)}</button> <span class="faint">&lt;${esc(e.fromEmail)}&gt;</span></span>
-    <span>To</span><span>${esc((o&&o.to)||e.to||"")}</span>${o&&o.cc?`<span>Cc</span><span>${esc(o.cc)}</span>`:""}<span>Date</span><span>${esc(fullDate(e.date))}</span>${acc?`<span>Mailbox</span><span>${esc(acc.email)}</span>`:""}</div></div>
+  <div class="rd-from"><div class="av" style="background:${avColor(name)}">${esc(initials(name))}</div>
+   <div class="rf"><div class="rf-1"><button class="who" data-a="sender" data-v="${esc(name)}">${esc(name)}</button><span class="faint rf-e">&lt;${esc(e.fromEmail)}&gt;</span><span class="rf-d" data-tip="${esc(fullDate(e.date))}">${when(e.date)}</span></div>
+    <div class="rf-2">${to?`To ${esc(to)}`:""}${o&&o.cc?` · Cc ${esc(o.cc)}`:""}${acc&&S.accounts.length>1&&!to.toLowerCase().includes(acc.email.toLowerCase())?` · via ${esc(acc.email)}`:""}</div></div></div>
+  ${qs.length?`<div class="rd-ap">${qs.map(({q,a:ag})=>apItemHTML(q,e,ag,true)).join("")}</div>`:""}
   ${(()=>{const ts=shownTasksFor(e.id),ss=suggestionsFor(e.id);return ts.length||ss.length?`<div class="rd-tasks">${ts.map(taskRowHTML).join("")}${ss.map(x=>suggestionHTML(x,{noEmail:true})).join("")}</div>`:"";})()}
   ${o&&o.html?`<div style="display:flex;gap:6px">${!S.box.plain?`<button class="btn sm" data-a="toggleimages" title="Remote images can tell senders you opened the email">${ic("eye")}${S.box.images?"Hide images":"Show images"}</button>`:""}<button class="btn sm" data-a="toggleplain">${S.box.plain?"Show formatted":"Plain text"}</button></div>`:""}
   ${bodyHTML}
@@ -1184,7 +1264,7 @@ function renderModal(){
   foot=`<button class="btn sm" data-a="closemodal">Close</button><button class="btn pri sm" data-a="applyctx" ${S.ctxBusy?"disabled":""}>Update</button>`;}
  else if(M.t==="lane"){const st=compute();const list=st.lanes[M.lane]||[];title=`${LANE[M.lane]} · ${list.length}`;wide=true;
   h=`<p class="muted">${{plan:"Important, but they can wait. Give these a slot later this week.",delegate:"Someone else could handle these. Forwarding sends each one to a colleague and archives it.",letgo:"Low on urgency, importance and effort, so they're safe to archive. You can move any back to the inbox."}[M.lane]}</p>
-   <div class="card"><div class="rows">${list.map(e=>rowHTML(e)).join("")||emptyHTML("Nothing here.")}</div></div>
+   <div class="card"><div class="rows">${list.map(e=>rowHTML(e,{q:M.lane})).join("")||emptyHTML("Nothing here.")}</div></div>
    ${M.lane==="delegate"&&list.length?`<div class="fld"><span class="lbl">Forward to</span>${list.map(e=>{const to=(M.to||{})[e.id]??(isEmail(e._c.delegate)?e._c.delegate:"");return `<div style="display:flex;gap:8px;align-items:center"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${esc(e.subject)}</span><input class="in" style="max-width:240px" data-dto="${e.id}" value="${esc(to)}" placeholder="${esc(e._c.delegate||"colleague")}'s email" aria-label="Forward to"></div>`;}).join("")}</div>`:""}`;
   foot=`<button class="btn sm" data-a="closemodal">Close</button>${M.lane==="letgo"&&list.length?`<button class="btn pri sm" data-a="doletgo">Archive all ${list.length}</button>`:""}${M.lane==="delegate"&&list.length?`<button class="btn pri sm" data-a="dodelegateall">Forward ${list.length}</button>`:""}`;}
  else if(M.t==="weights"){title="How to rank your email";const w=S.set.w;
@@ -1277,28 +1357,35 @@ if(matchMedia("(hover:hover)").matches){
 }
 let toastT;function toast(msg,undoId){const t=document.getElementById("toast");t.innerHTML=`<span>${esc(msg)}</span>${undoId?`<button data-a="undo" data-id="${undoId}">Undo</button>`:""}`;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,5000);}
 function afterRender(v){if(v==="inbox"&&S.box.sel){const e=byId(S.box.sel);if(e&&!S.box.orig[e.id])loadOriginal(e);if(e&&e.unread&&!S.readSent.has(e.id)){S.readSent.add(e.id);e.unread=false;act([e.id],"read");setTimeout(render,0);}}
- if(v==="dashboard"&&S.scrollPanel){S.scrollPanel=false;const p=document.getElementById("bkpanel");if(p&&window.innerWidth<1100)p.scrollIntoView({behavior:"smooth",block:"start"});}}
+ if((v==="dashboard"||v==="buckets")&&S.scrollPanel){S.scrollPanel=false;const p=document.getElementById("bkpanel");if(p&&window.innerWidth<1100)p.scrollIntoView({behavior:"smooth",block:"start"});}}
 
 /* ================= events ================= */
 const draftOf=id=>{const ta=document.getElementById("draft");return ta&&ta.dataset.id===id?ta.value:(S.drafts[id]??(byId(id)||{}).draft??"");};
-function openMail(id,reply){S.sheet=null;S.box.filter=null;const e=byId(id);if(e)S.box.folder=OPEN(e)||e.status==="ready"?"inbox":"done";
- S.box.compose=reply?{id,mode:"reply"}:(S.box.compose&&S.box.compose.id===id?S.box.compose:null);S.confirmSend=null;go("inbox",id);}
+function openMail(id,reply,qk){S.sheet=null;closePop();const e=byId(id);
+ const inQ=k=>k&&isQueue(k)&&queueEmails(k).some(x=>x.id===id);
+ let q=inQ(qk)?qk:inQ(S.box.queue)?S.box.queue:!e?"all":HANDLED.includes(e.status)?"done":"all";
+ if(q!==S.box.queue)S.box.filter=null;
+ S.box.compose=reply?{id,mode:"reply"}:(S.box.compose&&S.box.compose.id===id?S.box.compose:null);S.confirmSend=null;go("inbox",q,id);}
+function goQueue(k,start){closePop();S.modal=null;renderModal();S.box.filter=null;S.box.q="";S.box.compose=null;const first=start?queueEmails(k)[0]:null;go("inbox",k,first?first.id:null);}
 function setAgent(id,patch){const a=agentById(id);if(!a)return;Object.assign(a,patch);saveSet();}
 async function onClick(ev){
  const t=ev.target.closest("[data-a]");
- if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","sender","budget","delegate"].includes(t.dataset.a)))closePop();
+ if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","sender","budget","delegate","why"].includes(t.dataset.a)))closePop();
  if(!t||t.disabled)return;const a=t.dataset.a,id=t.dataset.id,v=t.dataset.v;
  const one=async(op,param)=>{const en=await act([id],op,param);if(en)toast(en.text,en.undoable?en.id:null);};
  switch(a){
   case "demo":ev.preventDefault();startDemo();break;
   case "exitdemo":location.hash="#/signup";location.reload();break;
-  case "open":closePop();S.sheet=id;S.sheetFull=false;renderSheet();break;
+  case "open":case "openmail":closePop();S.modal=null;renderModal();openMail(id,v==="reply",t.dataset.q);break;
+  case "goq":goQueue(v,!!t.dataset.start);break;
+  case "why":{ev.stopPropagation();const e=byId(id);if(e)openPop(t,popWhy(e),"why"+id);break;}
+  case "qnav":{const ids=S.box.lastIds||[];const i=ids.indexOf(S.box.sel);const j=i<0?0:i+Number(v);if(ids[j]){S.box.compose=null;S.confirmSend=null;go("inbox",S.box.queue,ids[j]);}break;}
+  case "navtg":{const cur=t.getAttribute("aria-expanded")==="true";S.navOpen[v]=!cur;try{localStorage.setItem("wb.nav",JSON.stringify(S.navOpen));}catch(e){}render();break;}
   case "closesheet":S.sheet=null;renderSheet();break;
   case "full":S.sheetFull=!S.sheetFull;renderSheet();break;
-  case "openmail":closePop();S.modal=null;openMail(id,v==="reply");break;
-  case "selmail":S.box.compose=null;S.confirmSend=null;go("inbox",id);break;
-  case "closemail":go("inbox");break;
-  case "folder":S.box.folder=v;go("inbox");break;
+  case "selmail":S.box.compose=null;S.confirmSend=null;go("inbox",S.box.queue||"all",id);break;
+  case "closemail":go("inbox",S.box.queue||"all");break;
+  case "folder":goQueue(v);break;
   case "clearboxfilter":S.box.filter=null;render();break;
   case "toggleplain":S.box.plain=!S.box.plain;render();break;
   case "toggleimages":S.box.images=!S.box.images;render();break;
@@ -1327,9 +1414,9 @@ async function onClick(ev){
    saveSet();toast(v==="none"?`${name} back to normal weight`:`${name}: ${v==="up"?"more important":v==="down"?"less important":"more urgent"}. Ranking updated.`);
    render();if(a==="sweight")pop.innerHTML=popSender(name);break;}
   case "sender":ev.stopPropagation();openPop(t,popSender(v),"snd"+v);break;
-  case "fsender":closePop();S.box.filter={kind:"sender",v};S.box.folder="inbox";go("inbox");break;
-  case "project":S.box.filter={kind:"project",v};S.box.folder="inbox";S.sheet=null;S.modal=null;go("inbox");break;
-  case "filter":S.box.filter={kind:v};S.box.folder="inbox";go("inbox");break;
+  case "fsender":closePop();S.box.filter={kind:"sender",v};go("inbox","all");break;
+  case "project":closePop();S.box.filter={kind:"project",v};S.sheet=null;S.modal=null;renderModal();go("inbox","all");break;
+  case "filter":if(v==="reply")goQueue("replies");else{S.box.filter={kind:v};go("inbox","all");}break;
   case "scrollto":{const el=document.getElementById(v);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});break;}
   case "nav":go(v);break;
   case "lane":S.modal={t:"lane",lane:v,to:{}};renderModal();break;
@@ -1379,7 +1466,7 @@ async function onClick(ev){
   case "bucket":S.bucketSel=S.bucketSel===id?null:id;S.bucketStatus=null;S.scrollPanel=!!S.bucketSel;render();break;
   case "closebucket":S.bucketSel=null;S.bucketStatus=null;render();break;
   case "bstatus":S.bucketStatus=v||null;render();break;
-  case "bucketinbox":S.box.filter={kind:"bucket",v:id};S.box.folder="inbox";go("inbox");break;
+  case "bucketinbox":goQueue("g-"+id,true);break;
   case "suggestbuckets":await suggestBuckets(false);break;
   case "refreshsum":await refreshSummaries(true,id);break;
   case "keepbucket":{const b=bucketById(id);if(b){b.kept=true;saveSet();toast(`Kept “${b.name}”`);render();}break;}
@@ -1414,8 +1501,8 @@ async function onClick(ev){
   case "moreapprovals":S.showAllApprovals=!S.showAllApprovals;render();break;
   case "bview":S.bview=v;S.bucketSel=null;S.bucketStatus=null;render();break;
   case "qedit":{const ta=document.getElementById("qe-"+id);if(ta)S.qEdits[id]=ta.value;S.qEditing=S.qEditing===id?null:id;render();setTimeout(()=>{const t2=document.getElementById("qe-"+id);if(t2)t2.focus();},0);break;}
-  case "bkopen":{const dim=S.dim||"project";if(dim==="mailbox"){const acc=S.accounts.find(x=>x.email===v);S.box.account=acc?acc.id:"all";S.box.filter=null;}else S.box.filter={kind:dim,v};S.box.folder="inbox";go("inbox");break;}
-  case "bkmailbox":S.box.account=id;S.box.filter=null;S.box.folder="inbox";go("inbox");break;
+  case "bkopen":{const dim=S.dim||"project";if(dim==="mailbox"){const acc=S.accounts.find(x=>x.email===v);S.box.account=acc?acc.id:"all";S.box.filter=null;}else S.box.filter={kind:dim,v};go("inbox","all");break;}
+  case "bkmailbox":S.box.account=id;S.box.filter=null;go("inbox","all");break;
   case "compose":S.modal={t:"compose",from:S.box.account!=="all"?S.box.account:(S.accounts[0]||{}).id};renderModal();break;
   case "composeto":closePop();S.modal={t:"compose",from:(S.accounts[0]||{}).id,to:v};renderModal();break;
   case "c-send":case "c-draft":{const M=S.modal;readCompose();
@@ -1479,8 +1566,8 @@ document.addEventListener("change",ev=>{const t=ev.target;const id=t.dataset&&t.
  if(t.dataset&&t.dataset.tf==="due"){const tk=S.tasks.find(x=>x.id===t.dataset.id);if(tk){tk.due=t.value||null;render();persistTask(tk);}return;}
  if(t.dataset&&t.dataset.tf==="title"){render();return;}
  if(t.dataset&&t.dataset.tl){const tk=S.tasks.find(x=>x.id===t.dataset.tl);if(tk&&t.value){tk.emailIds=[...new Set([...linkIds(tk),t.value])];normTask(tk);render();toast("Email linked");persistTask(tk);}return;}
- if(t.id==="macct"){S.box.account=t.value;go("inbox");}
- else if(t.id==="mbkt"){S.box.filter=t.value?{kind:"bucket",v:t.value}:null;go("inbox");}
+ if(t.id==="macct"){S.box.account=t.value;go("inbox",S.box.queue||"all");}
+ else if(t.id==="mqsel"){goQueue(t.value);}
  else if(t.id==="sh-bucket"){moveToBucket(t.dataset.id,t.value);}
  else if(S.modal&&S.modal.t==="bucket"&&(t.dataset.bkproj!=null||t.dataset.bktype!=null)){readBucketForm();const c=document.getElementById("bk-count");if(c)c.textContent=bucketPreview(S.modal.b);}
  else if(t.id==="ag-field"){setAgent(id,{field:t.value,value:t.value==="type"?"notification":""});render();}
@@ -1492,7 +1579,12 @@ document.addEventListener("change",ev=>{const t=ev.target;const id=t.dataset&&t.
 document.addEventListener("keydown",ev=>{
  if(ev.key==="Escape"){if(!pop.hidden)closePop();else if(S.modal){S.modal=null;renderModal();}else if(S.sheet){S.sheet=null;renderSheet();}else if(S.route.view==="inbox"&&S.box.compose){S.box.compose=null;render();}}
  if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("tk-row")){ev.preventDefault();ev.target.click();return;}
- if(ev.key==="Enter"&&ev.target.classList&&ev.target.classList.contains("row")){ev.preventDefault();ev.target.click();}
+ if(ev.key==="Enter"&&ev.target.classList&&ev.target.classList.contains("row")){ev.preventDefault();ev.target.click();return;}
+ const tg=ev.target;if(S.route.view!=="inbox"||S.modal||ev.metaKey||ev.ctrlKey||ev.altKey||(tg&&(tg.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))))return;
+ const k=ev.key.toLowerCase();const btn=sel=>{const b=document.querySelector(sel);if(b&&!b.disabled){ev.preventDefault();b.click();}};
+ if(k==="j")btn('.toolbar [data-a="qnav"][data-v="1"]');else if(k==="k")btn('.toolbar [data-a="qnav"][data-v="-1"]');
+ else if(k==="e")btn('.toolbar [data-a="q-done"]');else if(k==="r")btn('.toolbar [data-a="reply"]');
+ if(!S.box.sel&&(k==="j"||k==="enter")){const f=document.querySelector('.qclear [data-a="selmail"]');if(f){ev.preventDefault();f.click();}}
 });
 
 /* ================= boot ================= */

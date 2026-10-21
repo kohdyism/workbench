@@ -7,13 +7,26 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 ## What it does
 
 - **Accounts:** people sign up with an email and password, or continue with Google or Microsoft, then connect as many Gmail and Outlook mailboxes as they like. A mailbox can belong to only one Workbench account.
-- **Dashboard** (left navigation: Dashboard, Inbox, Tasks, Agents, Priorities, Activity, Accounts), ordered from "what needs me now" down to background detail:
-  - **A sticky progress strip** under the greeting stays in view as you scroll: today's progress (done against what's left in Do today, and time left in your budget), Urgent, Needs your OK, Tasks (in progress and overdue) and Replies owed. Each one jumps to its card. The time budget, this week's context and the ranking preset sit at the right end of the strip.
-  - **Your daily rundown:** a newsletter-style briefing written by Claude once a day. It shows the headline and summary; open it for what came in, what's urgent, what's on your list and the week's focus, with each item linking to its email.
-  - **Do today** (sized to your time budget), with links to Do later, Hand off and Low priority underneath. **Tasks** sits below it. **Needs your OK** sits alongside and gathers everything waiting on you: agent actions, suggested tasks and drafts ready to send.
-  - **Buckets**, with tabs to group your mail by **Topic** (your buckets), **Urgency**, **Importance**, **Effort**, **Type** or **Mailbox**. Claude suggests the topic buckets after the first sort (3 to 7, by project, client or kind of mail), and you can keep, edit, remove or make your own. Each card shows its open count, urgent, for approval, unread, tasks and priority, plus a summary. Clicking a card opens a panel to the right with that group's email by status: Urgent, For approval, Drafts ready, To do, Hand off, Low priority and Done this week. Agent suggestions and suggested tasks can be approved right there.
+- **Navigation:** the left bar has sections with subtabs, so you can work in one focused list at a time.
+  - **Dashboard:** Overview and Buckets.
+  - **Inbox:** Do today, Needs your OK, Replies owed, Do later, Hand off, Low priority, All mail, Drafts and Done, then one list per bucket.
+  - **Tasks:** To do, Suggested and Done.
+  - Agents, Priorities, Activity and Accounts.
+  - Sections can be collapsed; Workbench remembers your choice.
+- **Dashboard (Overview)**, ordered from "what needs me now" down to background detail:
+  - **A sticky progress strip** under the greeting stays in view as you scroll: today's progress, Urgent, Needs your OK, Tasks and Replies owed. Each number opens that list in the Inbox at its first email. The time budget, this week's context and the ranking preset sit at the right end.
+  - **Your daily rundown:** a newsletter-style briefing written by Claude once a day. It shows the headline and summary; open it for the full briefing, with each item linking to its email.
+  - **Do today** with a **Start** button, links to Do later, Hand off and Low priority underneath, and **Tasks** below. **Needs your OK** sits alongside with agent actions, suggested tasks and drafts ready to send; approve them in place, or choose **One by one** to review each with its email.
+  - **Buckets** in brief: one line per bucket with its open count and what's pressing. Clicking one opens that bucket as a list in the Inbox.
   - **Behind the scenes**, at the bottom: the last 7 days, agent activity and mailbox status.
-  - Hovering a number, bucket stat, sender or mailbox shows more detail. Clicking opens a popover, dialog, side sheet or panel, so the view itself only changes for bigger tasks.
+- **Working through email:** clicking an email anywhere opens it in the Inbox inside the list you came from, so you keep your place.
+  - The toolbar shows where you are ("2 of 7") with previous and next.
+  - When you finish an email (done, archive, send, forward or approve), Workbench moves straight to the next one.
+  - Keyboard: J and K move between emails, E marks done, R replies.
+  - When a list is empty, it suggests the next list with work waiting.
+  - The email view keeps the ranking out of the way: one line with the lane, score, project and what's asked. **Why here?** opens a small popover with urgency, importance and effort, the reasons, the bucket, and buttons to rank the sender higher or lower. Agent suggestions and suggested tasks for that email appear above the message, ready to approve.
+- **Buckets page:** tabs to group your mail by **Topic** (your buckets), **Urgency**, **Importance**, **Effort**, **Type** or **Mailbox**. Claude suggests the topic buckets after the first sort, and you can keep, edit, remove or make your own. Each card shows its open count, urgent, for approval, unread, tasks and priority, plus a summary. Clicking a card opens a panel to the right with its email by status, and **Work through** opens that group as a list in the Inbox.
+- Hovering a number, bucket, score, sender or mailbox shows more detail.
 - **Tasks:** create a task from any email, or approve one that Claude suggests while sorting. **Claude's suggestions never become tasks until you approve them**; you can edit or dismiss them instead. Click a task to open it in place: rename it, set progress (To do, In progress, Done), set a due date, write a description, and link or unlink emails. One task can be linked to several emails, and you can add an email to an existing task from the email itself. Changes save automatically. Tasks show on the dashboard, on each linked email, and on their own Tasks page with due, overdue and done.
 - **Inbox:** a normal mail client across every connected mailbox.
   - Folders (Inbox, Drafts, Done), a mailbox filter and search.

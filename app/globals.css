@@ -683,3 +683,70 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 @media (max-width:640px){.pulse{padding-left:16px;padding-right:16px}.page.dash [id]{scroll-margin-top:150px}.sec-h2 .bview{margin-left:0;order:3;width:100%;overflow-x:auto;flex-wrap:nowrap}}
 .dr-t{display:block}
 #approvals .ap .dr-t{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+/* nav groups and subtabs */
+.nav-sc{display:flex;flex-direction:column;gap:2px;min-height:0;overflow-y:auto;margin:0 -4px;padding:0 4px 8px;scrollbar-width:thin}
+.ng{display:flex;flex-direction:column;gap:1px}
+.nvh{display:flex;align-items:center;position:relative}
+.nvh .nv{flex:1;min-width:0;padding-right:34px}
+.ng.act>.nvh .nv{color:var(--fg)}
+.nv-tg{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--faint)}
+.nv-tg:hover{background:var(--fill);color:var(--fg)}
+.nv-tg svg.i{width:15px;height:15px;transition:transform .15s}
+.nvh .nv .ct{margin-right:2px}
+.nsub{display:flex;flex-direction:column;gap:1px;padding:2px 0 6px 18px;margin-left:10px;border-left:1px solid var(--line)}
+.nv.sub{height:30px;font-size:13.5px;gap:8px;padding:0 8px}
+.nv.sub .ldot{width:7px;height:7px;flex:none}
+.nv.sub .t{overflow:hidden;text-overflow:ellipsis}
+.lbl3{font-size:11px;font-weight:600;color:var(--faint);padding:8px 8px 3px;letter-spacing:.02em}
+@media (max-width:820px){.nav-sc{flex-direction:row;overflow:visible;margin:0;padding:0;gap:2px}.ng,.nvh{display:contents}.nv-tg,.nsub{display:none}.nvh .nv{padding-right:9px;flex:none}}
+/* inbox: queue header */
+.qh{display:flex;align-items:center;gap:8px;min-width:0}
+.qh h2{font-size:17px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qh .sp{flex:1}
+.qb{margin-top:-4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.qrow{display:flex;gap:8px;align-items:center}
+.qrow .search{flex:1;min-width:0}
+.qsel{display:none;width:auto;height:32px;padding:2px 8px;max-width:46%}
+@media (max-width:820px){.qsel{display:block}}
+.qclear{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;max-width:420px;padding:24px}
+.qnext{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.qnext .btn .ldot{width:8px;height:8px}
+/* reading pane: one toolbar row, compact headers */
+.qnav{display:inline-flex;align-items:center;gap:2px;margin-right:6px;padding-right:8px;border-right:1px solid var(--line)}
+.qnav .ib{width:30px;height:30px}
+.qnav .ib:disabled{opacity:.35}
+.qpos{font-size:12.5px;color:var(--muted);padding:0 4px;white-space:nowrap}
+.triage{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;min-width:0}
+.triage>*{flex:none}
+.triage .pill{cursor:pointer}
+.triage .why{margin-left:auto;color:var(--muted);padding:0 4px}
+.triage .why:hover{color:var(--accent)}
+.triage .tg-ask{flex:0 1 auto;min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-from{display:flex;gap:12px;align-items:center}
+.rf{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rf-1{display:flex;align-items:baseline;gap:6px;min-width:0;font-size:14px}
+.rf-1 .who{font-weight:600}
+.rf-e{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px}
+.rf-d{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.rf-2{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-ap{display:flex;flex-direction:column;gap:8px}
+.pop .bars{display:flex;flex-direction:column;gap:6px}
+/* dashboard: brief buckets */
+.bbrief{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));border-top:1px solid var(--line);margin-bottom:-1px;margin-right:-1px}
+.bb{display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--surface);text-align:left;min-width:0;box-shadow:inset -1px -1px 0 var(--line)}
+.bb:hover{background:color-mix(in srgb,var(--bc) 6%,var(--surface))}
+.bb-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.bb-n{font-weight:600;font-size:14px;color:color-mix(in srgb,var(--bc) 82%,var(--fg));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bb-s{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bb-s .red{color:var(--now);font-weight:600}
+.bb-c{font-size:20px;font-weight:600;letter-spacing:-.02em}
+/* buckets page and tasks page */
+.bpage .sec-h2 h2{display:none}
+.bpage .sec-h2 .bview{margin-left:0}
+.bpage .bkwrap>.bkp,.bpage .bkwrap>.bkslot{top:72px;max-height:calc(100vh - 88px)}
+.tnudge{display:flex;align-items:center;gap:8px;text-decoration:none}
+.tnudge>span{flex:1}
+
+@media (max-width:820px){.qrow .macct{display:none}}
+.card:has(>.bbrief){overflow:hidden}
+.nav-sc>*,.nsub>*,.ng>*{flex:none}
