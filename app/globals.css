@@ -468,3 +468,9 @@ a.provc:hover{box-shadow:0 0 0 1px var(--faint)}
 .tcnt{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;color:var(--accent);align-self:center}
 .tcnt svg.i{width:13px;height:13px}
 .stat.acc .n{color:var(--accent)}
+.news-cols ol,.news-cols ul{display:block}
+.news-cols li+li{margin-top:6px}
+.news-cols li{padding-left:2px}
+a.mb,a.nv,a.agchip,a.agi,a.provc{text-decoration:none}
+a.mb{color:var(--muted)}
+.nlink{vertical-align:top;line-height:inherit}

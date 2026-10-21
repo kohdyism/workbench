@@ -548,6 +548,7 @@ const todayKey=()=>ymd(new Date());
 const isoDay=off=>{const d=new Date();d.setDate(d.getDate()+off);return ymd(d);};
 const fmtDay=d=>new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
 function dueLabel(due){if(!due)return "";const t=todayKey();if(due<t)return "Overdue · "+fmtDay(due);if(due===t)return "Today";if(due===isoDay(1))return "Tomorrow";return fmtDay(due);}
+const dueLow=due=>{const d=dueLabel(due);return /^(Today|Tomorrow)$/.test(d)?d.toLowerCase():d;};
 const dueCls=due=>!due?"":due<todayKey()?"over":due===todayKey()?"today":"";
 const TPL={request:["request","requests"],decision:["decision","decisions"],meeting:["meeting request","meeting requests"],fyi:["FYI","FYIs"],notification:["notification","notifications"],newsletter:["newsletter","newsletters"],sales:["sales email","sales emails"]};
 const plural=(t,c)=>`${c} ${(TPL[t]||["email","emails"])[c===1?0:1]}`;
@@ -738,7 +739,7 @@ function rundownInputs(){
  const received=S.emails.filter(e=>new Date(e.date)>since).sort((a,b)=>b.date.localeCompare(a.date));
  const week=S.emails.filter(e=>new Date(e.date)>weekAgo).sort((a,b)=>score(b).s-score(a).s);
  const owed=st.open.filter(e=>["request","decision","meeting"].includes(e._c.a.type)&&e._lane!=="letgo"&&!tasksFor(e.id).length);
- const todo=[...openTasks().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")).map(t=>({text:t.title+(t.due?` (${dueLabel(t.due).toLowerCase()})`:""),emailId:t.emailId})),
+ const todo=[...openTasks().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")).map(t=>({text:t.title+(t.due?` (${dueLow(t.due)})`:""),emailId:t.emailId})),
   ...taskSuggestions().slice(0,5).map(s=>({text:"Suggested: "+s.title,emailId:s.emailId})),
   ...owed.slice(0,6).map(e=>({text:`Reply to ${firstName(dispName(e))}: ${e._c.a.ask&&e._c.a.ask!=="Nothing"?e._c.a.ask:shortSubj(e.subject)}`,emailId:e.id}))];
  const byType={};received.forEach(e=>{const t=(e._c||score(e)).a.type;byType[t]=(byType[t]||0)+1;});
@@ -756,7 +757,7 @@ function rundownBasic(x){
   headline:n?`${n} thing${n>1?"s":""} need you today, starting with ${shortSubj(top.subject).toLowerCase()}`:"A quiet day: nothing urgent waiting",
   intro:`${x.received.length} email${x.received.length===1?"":"s"} arrived in the last 24 hours across ${S.accounts.length} mailbox${S.accounts.length===1?"":"es"}. ${agents?`Your agents handled ${agents}`:"Your agents haven't needed to act yet"}${approvals?`, and ${approvals} suggestion${approvals>1?"s":""} ${approvals>1?"wait":"waits"} for your approval.`:"."}`,
   received:`${types.length?"Mostly "+types.slice(0,3).map(([t,c])=>plural(t,c)).join(", ")+".":"Nothing new came in."}${bks.length?` The busiest buckets are ${bks.map(d=>`${d.b.name} (${d.active.length})`).join(", ")}.`:""}`,
-  urgent:st.today.slice(0,5).map(e=>{const t=(e.ai&&e.ai.tasks&&e.ai.tasks[0])||tasksFor(e.id)[0];const ask=e.by==="ai"&&e._c.a.ask&&e._c.a.ask!=="Nothing"?e._c.a.ask:"";return {emailId:e.id,text:`${t?t.title:shortSubj(e.subject)}${ask&&!t?": "+ask.replace(/[.?!]+$/,""):""} (${firstName(dispName(e))}${t&&t.due?", "+dueLabel(t.due).toLowerCase():""})`};}),
+  urgent:st.today.slice(0,5).map(e=>{const t=(e.ai&&e.ai.tasks&&e.ai.tasks[0])||tasksFor(e.id)[0];const ask=e.by==="ai"&&e._c.a.ask&&e._c.a.ask!=="Nothing"?e._c.a.ask:"";return {emailId:e.id,text:`${t?t.title:shortSubj(e.subject)}${ask&&!t?": "+ask.replace(/[.?!]+$/,""):""} (${firstName(dispName(e))}${t&&t.due?", "+dueLow(t.due):""})`};}),
   todo:x.todo.slice(0,6),
   focus:fb&&fb.active.length?{title:fb.b.name,text:`${fb.active.length} open email${fb.active.length>1?"s":""}${fb.urgent?`, ${fb.urgent} urgent today`:""}, and the most pressing is ${shortSubj((fb.active.filter(OPEN).sort((a,b)=>b._c.s-a._c.s)[0]||fb.active[0]).subject).toLowerCase()}. ${ctx?`You said: “${ctx}.”`:"Clear this first and let lower buckets wait."}`}:{title:"Keep it light",text:"Nothing stands out this week. Clear Today and let the rest wait."},
   signoff:n?"Start with the first item in Today. Everything else can wait.":"Enjoy the quiet."
