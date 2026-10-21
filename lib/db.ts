@@ -107,6 +107,7 @@ create table if not exists tasks (
   done_at timestamptz
 );
 create index if not exists tasks_user on tasks (user_id, status);
+alter table tasks add column if not exists email_ids jsonb not null default '[]'::jsonb;
 `;
 
 export function ready(): Promise<void> {

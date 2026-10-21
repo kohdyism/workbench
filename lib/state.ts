@@ -30,7 +30,7 @@ const EMAIL_COLS = `e.id, e.account_id, a.provider, e.from_name, e.from_email, e
 
 export function taskToClient(t: any) {
   return {
-    id: t.id, emailId: t.email_id, title: t.title, notes: t.notes || "", status: t.status, source: t.source, key: t.key,
+    id: t.id, emailId: t.email_id, emailIds: Array.isArray(t.email_ids) && t.email_ids.length ? t.email_ids : t.email_id ? [t.email_id] : [], title: t.title, notes: t.notes || "", status: t.status, source: t.source, key: t.key,
     due: t.due ? new Date(t.due).toISOString().slice(0, 10) : null,
     createdAt: new Date(t.created_at).toISOString(), doneAt: t.done_at ? new Date(t.done_at).toISOString() : null,
   };
@@ -58,7 +58,7 @@ export async function loadState(userId: string) {
   );
   const log = await sql`select id, t, actor, text, undoable, undone, agent_id, reason, undo from log where user_id = ${userId} order by t desc limit 200`;
   const queue = await sql`select id, agent_id, email_id, action, param, reason, created_at from queue where user_id = ${userId}`;
-  const tasks = await sql`select id, email_id, title, notes, due, status, source, key, created_at, done_at from tasks
+  const tasks = await sql`select id, email_id, email_ids, title, notes, due, status, source, key, created_at, done_at from tasks
     where user_id = ${userId} and (status <> 'done' or done_at > now() - interval '14 days') order by created_at desc limit 800`;
   return {
     user: { email: user?.email || "", name: user?.name || "" },
