@@ -14,7 +14,7 @@ export const POST = handle(async (req) => {
   if (!ids.length) return Response.json({ decisions: [] });
   const sql = db();
   const rows = await sql`select id, from_name, from_email, subject, body, snippet, date, ai from emails where user_id = ${userId} and id = any(${ids})`;
-  if (!(await spend(userId, Math.ceil(rows.length / 2)))) throw new HttpError(429, "You've used today's AI allowance.");
+  if (!(await spend(userId, Math.ceil(rows.length / 2)))) throw new HttpError(429, "You've used today's AI allowance. It resets at midnight UTC.");
   const [u] = await sql`select settings from users where id = ${userId}`;
   const decisions = await agentDecide(
     b.agent,

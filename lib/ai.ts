@@ -44,8 +44,28 @@ function parseJson(text: string): unknown {
   }
   const start = text.search(/[[{]/);
   const end = Math.max(text.lastIndexOf("]"), text.lastIndexOf("}"));
-  if (start >= 0 && end > start) return tryParse(text.slice(start, end + 1));
-  return undefined;
+  if (start >= 0 && end > start) {
+    const whole = tryParse(text.slice(start, end + 1));
+    if (whole !== undefined) return whole;
+  }
+  return salvage(text);
+}
+
+/** When a reply is cut off mid-array, keeps every complete {...} object so finished work isn't lost. */
+function salvage(text: string): unknown {
+  const start = text.indexOf("[");
+  if (start < 0) return undefined;
+  const out: unknown[] = [];
+  let depth = 0, from = -1, inStr = false, esc = false;
+  for (let k = start + 1; k < text.length; k++) {
+    const c = text[k];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{") { if (depth === 0) from = k; depth++; }
+    else if (c === "}") { depth--; if (depth === 0 && from >= 0) { try { out.push(JSON.parse(text.slice(from, k + 1))); } catch { /* skip */ } from = -1; } }
+    else if (c === "]" && depth === 0) break;
+  }
+  return out.length ? out : undefined;
 }
 
 /** Counts AI work against a per-user daily allowance. Returns how many units were granted. */
@@ -57,6 +77,13 @@ export async function spend(userId: string, want: number): Promise<number> {
   const grant = Math.max(0, Math.min(want, DAILY_LIMIT() - used));
   if (grant > 0) await sql`update users set ai_day = ${today}, ai_count = ${used + grant} where id = ${userId}`;
   return grant;
+}
+
+/** Gives back allowance that was reserved but not used, for example when Claude couldn't score a batch. */
+export async function refund(userId: string, n: number) {
+  if (n <= 0) return;
+  const today = new Date().toISOString().slice(0, 10);
+  await db()`update users set ai_count = greatest(0, ai_count - ${n}) where id = ${userId} and ai_day = ${today}`;
 }
 
 export async function remainingToday(userId: string): Promise<number> {
@@ -98,7 +125,7 @@ tasks: 0 to 2 concrete to-dos the user would put on their task list (imperative,
 Emails:
 ${batch.map((e) => JSON.stringify({ id: e.id, from: `${e.fromName} <${e.fromEmail}>`, date: e.date, subject: e.subject, body: e.body.slice(0, 1500) })).join("\n")}`;
   const out = new Map<string, AiScore>();
-  const parsed = parseJson(await claude(prompt, SCORING_MODEL(), 2500));
+  const parsed = parseJson(await claude(prompt, SCORING_MODEL(), 6000));
   const arr = (Array.isArray(parsed) ? parsed : []) as Record<string, unknown>[];
   arr.forEach((r, idx) => {
     const id = batch.find((b) => b.id === r.id)?.id || batch[idx]?.id;

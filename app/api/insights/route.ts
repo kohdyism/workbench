@@ -28,7 +28,7 @@ export const POST = handle(async (req) => {
   };
 
   if (b.kind === "buckets") {
-    if (!(await spend(userId, 2))) throw new HttpError(429, "You've used today's AI allowance.");
+    if (!(await spend(userId, 2))) throw new HttpError(429, "You've used today's AI allowance. It resets at midnight UTC.");
     const rows = await sql`select id, from_name, from_email, subject, snippet, date, ai from emails
       where user_id = ${userId} and status in ('open','ready') order by date desc limit 150`;
     const buckets = await suggestBuckets(rows.map(toBrief), ids(b.existing, 30), about);
@@ -37,7 +37,7 @@ export const POST = handle(async (req) => {
   if (b.kind === "summaries") {
     const list = (Array.isArray(b.buckets) ? b.buckets : []).slice(0, 12);
     if (!list.length) return Response.json({ summaries: {} });
-    if (!(await spend(userId, Math.min(4, list.length)))) throw new HttpError(429, "You've used today's AI allowance.");
+    if (!(await spend(userId, Math.min(4, list.length)))) throw new HttpError(429, "You've used today's AI allowance. It resets at midnight UTC.");
     const all = await load(list.flatMap((x: any) => ids(x.emailIds, 25)));
     const summaries = await summariseBuckets(
       list.map((x: any) => ({ id: String(x.id).slice(0, 40), name: String(x.name || "").slice(0, 60), description: String(x.description || "").slice(0, 200),
@@ -47,7 +47,7 @@ export const POST = handle(async (req) => {
     return Response.json({ summaries });
   }
   if (b.kind === "rundown") {
-    if (!(await spend(userId, 2))) throw new HttpError(429, "You've used today's AI allowance.");
+    if (!(await spend(userId, 2))) throw new HttpError(429, "You've used today's AI allowance. It resets at midnight UTC.");
     const rec = ids(b.receivedIds, 60), urg = ids(b.urgentIds, 10), wk = ids(b.weekIds, 60);
     const all = await load([...rec, ...urg, ...wk]);
     const pick = (l: string[]) => l.map((id) => all.get(id)).filter(Boolean) as Brief[];

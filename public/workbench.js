@@ -65,7 +65,7 @@ const DEFAULT_AGENTS=()=>[
   instructions:"For meeting requests, draft a short, friendly reply. Propose two times from my availability in the context. If the request is from my manager, accept their suggested time instead. If there's no clear ask for a meeting, do nothing.",
   context:"I'm usually free Tuesday and Thursday afternoons (14:00 to 17:00 UK time).\nI prefer 30-minute meetings.\nI don't take meetings on Fridays."})
 ];
-const DEFAULT_SET=()=>({w:{u:40,i:40,e:20},budget:120,about:"",context:"",ctx:[],rules:[],agents:DEFAULT_AGENTS(),buckets:[],bucketSummaries:{},rundown:null,bucketsSuggestedAt:null});
+const DEFAULT_SET=()=>({w:{u:40,i:40,e:20},budget:120,about:"",context:"",ctx:[],rules:[],agents:[],agentsChosen:false,buckets:[],bucketSummaries:{},rundown:null,bucketsSuggestedAt:null});
 const S={
  mode:"loading",user:null,accounts:[],emails:[],set:DEFAULT_SET(),log:[],queue:[],ai:{enabled:false,remaining:0},
  route:{view:"dashboard"},sheet:null,sheetFull:false,drafts:{},drafting:null,confirmSend:null,
@@ -111,9 +111,13 @@ function applyState(st){
  const bodies=new Map(S.emails.filter(e=>e.body).map(e=>[e.id,e.body]));
  S.emails=(st.emails||[]).map(e=>Object.assign(e,{body:bodies.get(e.id)||null}));
  const s=st.settings||{};S.set=Object.assign(DEFAULT_SET(),s);
- if(!Array.isArray(S.set.agents)||!S.set.agents.length)S.set.agents=DEFAULT_AGENTS();
+ if(!Array.isArray(S.set.agents))S.set.agents=[];
  S.set.agents=S.set.agents.map(a=>newAgent(a));
- S.log=st.log||[];S.queue=st.queue||[];S.tasks=st.tasks||[];S.ai=st.ai||{enabled:false,remaining:0};
+ // Earlier versions switched on four starter agents for everyone. Agents now only exist once you choose them.
+ if(!S.set.agentsChosen){const starter=["a1","a2","a3","a4"];const gone=S.set.agents.filter(a=>starter.includes(a.id)).map(a=>a.id);
+  S.set.agents=S.set.agents.filter(a=>!starter.includes(a.id));S.set.agentsChosen=true;
+  if(gone.length){const rm=(st.queue||[]).filter(q=>gone.includes(q.agentId)).map(q=>q.id);setTimeout(()=>{saveSet();if(rm.length)saveQueue([],rm);},0);}}
+ S.log=st.log||[];S.queue=(st.queue||[]).filter(q=>S.set.agents.some(a=>a.id===q.agentId));S.tasks=st.tasks||[];S.ai=st.ai||{enabled:false,remaining:0};
 }
 function mergeEmails(list){(list||[]).forEach(n=>{const i=S.emails.findIndex(e=>e.id===n.id);if(i>=0)S.emails[i]=Object.assign(S.emails[i],n);else S.emails.push(n);});}
 let setT;const saved={t:0};
@@ -383,7 +387,7 @@ function demoInbox(){
 async function startDemo(){
  S.mode="demo";S.user={email:"maya@halden.example",name:"Maya Okafor"};
  S.accounts=[{id:"demo-g",provider:"google",email:"maya@halden.example",lastSync:new Date().toISOString()},{id:"demo-o",provider:"microsoft",email:"maya.okafor@halden-group.example",lastSync:new Date().toISOString()}];
- S.set=DEFAULT_SET();
+ S.set=DEFAULT_SET();S.set.agents=DEFAULT_AGENTS();S.set.agentsChosen=true;
  S.set.about="I'm Maya Okafor, Programme Manager at Halden Freight. My manager is Helen Marsh. Raj Patel at Northwind is our key client.";
  S.set.context="This week I'm focused on the Q4 budget. Priya (priya.shah@halden.example) is covering for Tom while he's on leave. Ignore anything about the office move.";
  S.set.ctx=[{id:uid(),field:"subject",value:"budget",effect:"imp",amount:2,label:"Q4 budget: importance +2",expires:fridayEnd()},{id:uid(),field:"any",value:"tom",effect:"delegate",amount:0,to:"priya.shah@halden.example",label:"Tom's mail → suggest Priya",expires:fridayEnd()},{id:uid(),field:"subject",value:"office move",effect:"cap",amount:1,label:"Office move: importance capped at 1",expires:fridayEnd()}];
@@ -678,7 +682,19 @@ function bMatch(b,e){
  const from=(e.fromName+" "+e.fromEmail).toLowerCase();if((b.senders||[]).some(s=>s&&from.includes(String(s).toLowerCase())))return true;
  const txt=e.subject+" "+(a.summary||"")+" "+(e.body||e.snippet||"");return (b.keywords||[]).some(k=>k&&new RegExp("\\b"+escRe(k)+"\\b","i").test(txt));
 }
-function bucketIdOf(e){const B=S.set.buckets||[];for(const b of B)if((b.include||[]).includes(e.id))return b.id;for(const b of B)if(bMatch(b,e))return b.id;return "other";}
+/* How strongly a bucket's rules fit an email. Specific rules (sender, keyword) beat broad ones (a whole email type). */
+function bFit(b,e){
+ if(!e||(b.exclude||[]).includes(e.id))return 0;const a=(e._c||score(e)).a;let f=0;
+ const from=(e.fromName+" "+e.fromEmail).toLowerCase();if((b.senders||[]).some(x=>x&&from.includes(String(x).toLowerCase())))f=Math.max(f,40);
+ const kw=(b.keywords||[]).filter(Boolean);
+ if(kw.some(k=>new RegExp("\\b"+escRe(k)+"\\b","i").test(e.subject+" "+(a.summary||""))))f=Math.max(f,30);
+ else if(kw.some(k=>new RegExp("\\b"+escRe(k)+"\\b","i").test(e.body||e.snippet||"")))f=Math.max(f,15);
+ if((b.projects||[]).some(p=>p&&(a.project||"").toLowerCase()===String(p).toLowerCase()))f=Math.max(f,20);
+ if((b.types||[]).includes(a.type))f=Math.max(f,5);
+ return f;
+}
+function bucketIdOf(e){const B=S.set.buckets||[];for(const b of B)if((b.include||[]).includes(e.id))return b.id;
+ let best=null,bf=0;for(const b of B){const f=bFit(b,e);if(f>bf){bf=f;best=b;}}return best?best.id:"other";}
 const bucketById=id=>id==="other"?OTHER:(S.set.buckets||[]).find(b=>b.id===id);
 const STATUS=[["urgent","Urgent","var(--now)"],["approval","For approval","var(--accent)"],["ready","Drafts ready","var(--ready)"],["todo","To do","var(--plan)"],["delegate","Hand off","var(--del)"],["low","Low priority","var(--go)"],["done","Done this week","var(--faint)"]];
 const statusCtx=()=>({q:new Set(queueItems().map(x=>x.e.id)),s:new Set(taskSuggestions().map(s=>s.emailId))});
@@ -866,8 +882,9 @@ function popMove(e){
  return `<h3>Move to bucket</h3><p class="note">Workbench will keep this email in the bucket you choose.</p><div class="mvl">${[...(S.set.buckets||[]),OTHER].map(b=>`<button class="mvi${b.id===cur?" on":""}" data-a="moveto" data-id="${e.id}" data-v="${b.id}" ${b.id===cur?"aria-current=\"true\"":""}><span class="ldot" style="background:${b.color||"#8e8e93"}"></span>${esc(b.name)}${b.id===cur?`<span class="note" style="margin-left:auto">Current</span>`:""}</button>`).join("")}</div><button class="btn sm" data-a="newbucket">${ic("plus")}New bucket</button>`;
 }
 function unsubSenders(d){
- const m=new Map();d.active.forEach(e=>{const k=(e.fromEmail||"").toLowerCase();if(!k)return;const x=m.get(k)||{email:k,name:dispName(e),ids:[],likely:false};x.ids.push(e.id);if(UNSUB_TYPES.includes((e._c||score(e)).a.type))x.likely=true;m.set(k,x);});
- return [...m.values()].sort((a,b)=>(b.likely-a.likely)||(b.ids.length-a.ids.length));
+ const m=new Map();d.active.forEach(e=>{const k=(e.fromEmail||"").toLowerCase();if(!k)return;const x=m.get(k)||{email:k,name:dispName(e),ids:[],types:{}};x.ids.push(e.id);const ty=(e._c||score(e)).a.type;x.types[ty]=(x.types[ty]||0)+1;m.set(k,x);});
+ return [...m.values()].map(x=>{x.type=Object.entries(x.types).sort((p,q)=>q[1]-p[1])[0][0];x.likely=x.type==="newsletter"||x.type==="sales";x.list=UNSUB_TYPES.includes(x.type);return x;})
+  .sort((a,b)=>(b.likely-a.likely)||(b.list-a.list)||(b.ids.length-a.ids.length));
 }
 function bulkModalHTML(M){
  const d=bucketData(gView(M.bid)).find(x=>x.b.id===M.bid);const name=d?d.b.name:"this bucket";
@@ -877,16 +894,22 @@ function bulkModalHTML(M){
    return {title:"Unsubscribe results",h:`<p class="muted">${ok?`Done for ${ok} sender${ok>1?"s":""}${M.archived?`, and ${M.archived} email${M.archived>1?"s":""} archived`:""}.`:"Nothing could be done automatically."}${M.demo?" This is the demo, so nothing was actually sent.":""}</p>
     <div class="usl">${M.results.map(r=>`<div class="usr"><span class="usd ${r.ok?"ok":r.method==="link"?"warn":"no"}">${r.ok?ic("check"):r.method==="link"?ic("right"):ic("x")}</span><span class="usx"><b>${esc(r.name)}</b><span class="note">${esc(r.sender)} · ${esc(lab[r.method]||"")}${r.error?` (${esc(r.error)})`:""}</span></span>${r.method==="link"&&r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Open page</a>`:""}</div>`).join("")}</div>`,
     foot:`<button class="btn pri sm" data-a="closemodal">Done</button>`};}
-  const list=M.list;const sel=M.sel;const k=list.filter(x=>sel.has(x.email)).length;
-  return {title:`Unsubscribe from ${name} senders`,h:`<p class="muted">Workbench asks each sender to remove you, using the unsubscribe option they include in their email. Some only offer a web page; you'll get a link for those.${list.some(x=>x.likely)?" Newsletters, notifications and sales email are ticked for you.":" None of these look like mailing lists, so nothing is ticked. People you work with usually can't be unsubscribed from."}</p>
-   <div class="usl">${list.map(x=>`<label class="usr"><input type="checkbox" data-us="${esc(x.email)}" ${sel.has(x.email)?"checked":""}><span class="usx"><b>${esc(x.name)}</b><span class="note">${esc(x.email)} · ${x.ids.length} email${x.ids.length>1?"s":""}${x.likely?" · newsletter or notification":""}</span></span></label>`).join("")}</div>
+  const list=M.list;const sel=M.sel;const k=list.filter(x=>sel.has(x.email)).length;const TL={newsletter:"Newsletter",sales:"Sales",notification:"Notification",fyi:"FYI",request:"Request",decision:"Decision",meeting:"Meeting"};
+  return {title:`Unsubscribe from ${name} senders`,h:`<p class="muted">Workbench asks each sender to remove you, using the unsubscribe option they include in their email. Some only offer a web page; you'll get a link for those.${list.some(x=>x.likely)?" Newsletters and sales email are ticked for you.":""} Notifications aren't ticked, because they often include bank and security alerts you'll want to keep.</p>
+   <div class="usl"><label class="usr ush"><input type="checkbox" id="us-all" ${k===list.length?"checked":""}><span class="usx"><b>Select all</b></span><span class="note num" id="us-count">${k} of ${list.length} selected</span></label>
+    ${list.map(x=>`<label class="usr"><input type="checkbox" data-us="${esc(x.email)}" ${sel.has(x.email)?"checked":""}><span class="usx"><b>${esc(x.name)}</b><span class="note">${esc(x.email)} · ${x.ids.length} email${x.ids.length>1?"s":""}</span></span><span class="tag ust ${x.type}">${TL[x.type]||"Email"}</span></label>`).join("")}</div>
    <label class="usr" style="border:0;padding-left:0"><input type="checkbox" id="us-arch" ${M.archive?"checked":""}><span>Also archive their emails here</span></label>`,
-   foot:`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="dounsub" ${!k||M.busy?"disabled":""}>${M.busy?"Unsubscribing…":`Unsubscribe from ${k}`}</button>`};
+   foot:`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" id="us-go" data-a="dounsub" ${!k||M.busy?"disabled":""}>${M.busy?"Unsubscribing…":`Unsubscribe from ${k}`}</button>`};
  }
  const n=M.ids.length;
  if(M.op==="delete")return {title:`Delete ${n} email${n>1?"s":""}?`,h:`<p class="muted">Every open email in <b>${esc(name)}</b> moves to your ${S.accounts.some(a=>a.provider==="microsoft")?"Bin or Deleted Items":"Bin"}. Gmail and Outlook empty it after about 30 days. You can undo this from the toast or from Activity.</p>`,foot:`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn sm danger" data-a="dobulk">${ic("trash")}Delete ${n}</button>`};
  return {title:`Archive ${n} email${n>1?"s":""}?`,h:`<p class="muted">Every open email in <b>${esc(name)}</b> leaves your inbox with a Workbench/Low priority label. Nothing is deleted, and you can undo it from Activity.</p>`,foot:`<button class="btn sm" data-a="closemodal">Cancel</button><button class="btn pri sm" data-a="dobulk">Archive ${n}</button>`};
 }
+/* Updates the count, button and Select all box without rebuilding the dialog, so the list keeps its scroll position. */
+function unsubUI(){const M=S.modal;if(!M||M.op!=="unsub")return;const k=M.list.filter(x=>M.sel.has(x.email)).length;
+ const b=document.getElementById("us-go");if(b){b.textContent=`Unsubscribe from ${k}`;b.disabled=!k;}
+ const c=document.getElementById("us-count");if(c)c.textContent=`${k} of ${M.list.length} selected`;
+ const all=document.getElementById("us-all");if(all){all.checked=k===M.list.length;all.indeterminate=k>0&&k<M.list.length;}}
 async function runUnsub(M){
  M.busy=true;renderModal();const chosen=M.list.filter(x=>M.sel.has(x.email));const ids=chosen.flatMap(x=>x.ids);let results;
  if(live()){try{results=(await api("/api/unsubscribe",{ids})).results;}catch(err){M.busy=false;renderModal();toast(err.message);return;}}
@@ -1037,7 +1060,7 @@ function vDashboard(){
   <div class="grid3">
    <section class="card"><div class="card-h"><h3>Last 7 days</h3><span class="sp"><span class="note num">${weekSeries().reduce((s,x)=>s+x.handled,0)} handled</span></span></div><div class="card-b">${weekChart()}</div></section>
    <section class="card"><div class="card-h"><h3>${ic("bot")}Agent activity</h3><span class="sp"><a class="btn sm" href="#/agents">Agents</a></span></div>
-    <div class="agstrip">${S.set.agents.map(a=>{const c=S.log.filter(l=>l.agentId===a.id&&!l.undone&&Date.now()-new Date(l.t)<7*864e5).reduce((s,l)=>s+((l.emailIds||[]).length||1),0);const p=q.filter(x=>x.a.id===a.id).length;return `<a class="agchip" href="#/agents/${a.id}" data-tip="${esc(plain(agentSentence(a)))}${p?` · ${p} waiting`:""}"><span class="ldot" style="background:${a.on?a.color:"var(--faint)"}"></span>${esc(a.name)}<span class="num faint">${c}</span>${p?`<span class="pill p-ask num">${p}</span>`:""}</a>`;}).join("")}</div>
+    ${S.set.agents.length?"":`<div class="card-b"><p class="muted">No agents yet, so nothing acts on your mail by itself.</p><div><a class="btn sm pri" href="#/agents/add">${ic("plus")}Add an agent</a></div></div>`}<div class="agstrip">${S.set.agents.map(a=>{const c=S.log.filter(l=>l.agentId===a.id&&!l.undone&&Date.now()-new Date(l.t)<7*864e5).reduce((s,l)=>s+((l.emailIds||[]).length||1),0);const p=q.filter(x=>x.a.id===a.id).length;return `<a class="agchip" href="#/agents/${a.id}" data-tip="${esc(plain(agentSentence(a)))}${p?` · ${p} waiting`:""}"><span class="ldot" style="background:${a.on?a.color:"var(--faint)"}"></span>${esc(a.name)}<span class="num faint">${c}</span>${p?`<span class="pill p-ask num">${p}</span>`:""}</a>`;}).join("")}</div>
     <div class="feed">${feed.map(l=>{const a=agentById(l.agentId);return `<div class="fi"><span class="ico" style="background:${a?a.color:"#8e8e93"}">${ic("bot")}</span><div class="x"><div>${esc(l.text)}</div><div class="s2">${a?`<a href="#/agents/${a.id}">${esc(a.name)}</a> · `:""}${when(l.t)}${l.undone?" · undone":""}</div></div>${l.reason?`<span class="ib" style="width:24px;height:24px" data-tip="${esc("Why: "+l.reason)}">${ic("info")}</span>`:""}</div>`;}).join("")||emptyState("bot","Your agents are standing by","They act on new mail after each sync.")}</div></section>
    <section class="card"><div class="card-h"><h3>${ic("mail")}Mailboxes</h3><span class="sp"><a class="btn sm" href="#/connect">${ic("plus")}Add</a></span></div>
     <div class="card-b">${S.accounts.map(a=>{const cnt=S.emails.filter(e=>e.accountId===a.id&&OPEN(e)).length;const td=S.emails.filter(e=>e.accountId===a.id&&OPEN(e)&&e._today).length;return `<button class="mbrow" data-a="bkmailbox" data-id="${a.id}" data-tip="acct:${a.id}"><span class="pv" style="background:${pv(a.provider).c}">${pv(a.provider).l}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(a.email)}</span><span class="note num">${td?`${td} today · `:""}${cnt} open</span><span class="sdot${a.error?" err":""}"></span></button>`;}).join("")||`<p class="muted">No mailboxes yet.</p>`}</div></section>
@@ -1182,13 +1205,16 @@ async function loadOriginal(e){
 
 /* ================= agents ================= */
 function vAgents(){
- const A=S.set.agents;const id=S.route.id||(A[0]&&A[0].id);const a=agentById(id);
+ const A=S.set.agents;
+ if(!A.length||S.route.id==="add")return topHTML("Agents")+`<div class="page">${bannersHTML()}
+  <section class="card"><div class="card-b" style="padding:22px 22px 6px"><h2 style="font-size:20px">${A.length?"Add an agent":"Let agents handle the routine mail"}</h2><p class="muted" style="max-width:68ch">${A.length?"Pick a ready-made agent or create your own.":"You don't have any agents yet, so nothing acts on your mail. Pick a ready-made one or create your own."} New agents ask before they do anything; you can switch them to automatic once you trust them. Agents never delete email.</p></div>
+  ${presetGalleryHTML()}</section>${A.length?`<div><a class="btn sm" href="#/agents">${ic("back")}Back to your agents</a></div>`:""}</div>`;const id=S.route.id||(A[0]&&A[0].id);const a=agentById(id);
  const tab=S.route.tab||"activity";
- return topHTML("Agents",`<button class="btn sm" data-a="newagent">${ic("plus")}New agent</button>`)+`<div class="page">${bannersHTML()}
+ return topHTML("Agents",`<a class="btn sm" href="#/agents/add">${ic("plus")}Add agent</a>`)+`<div class="page">${bannersHTML()}
   <div class="ag"><aside class="card agl" aria-label="Your agents">${A.map(x=>{const pend=queueItems().filter(q=>q.a.id===x.id).length;const runs=S.log.filter(l=>l.agentId===x.id).length;
    return `<a class="agi" href="#/agents/${x.id}/${tab}" aria-current="${x.id===id}" data-tip="${esc(plain(agentSentence(x)))}"><span class="agico" style="background:${x.color}">${ic((x.instructions||"").trim()?"spark":"bot")}</span><span style="min-width:0"><div class="nm">${esc(x.name)}</div><div class="s2">${!x.on?"Paused":x.mode==="auto"?"Acts automatically":"Asks first"}${(x.instructions||"").trim()?" · Claude":""}</div></span>${pend?`<span class="pill p-ask num" data-tip="${pend} waiting for approval">${pend}</span>`:runs?`<span class="note num" data-tip="${runs} actions logged">${runs}</span>`:""}</a>`;}).join("")||emptyHTML("No agents yet.")}
-   <button class="agi" data-a="newagent" style="color:var(--accent)"><span class="agico" style="background:var(--fill);color:var(--accent)">${ic("plus")}</span><span class="nm">New agent</span></button></aside>
-  <section class="card" style="min-width:0">${a?agentDetail(a,tab):emptyHTML("Create an agent to get started.")}</section></div></div>`;
+   <a class="agi" href="#/agents/add" style="color:var(--accent)"><span class="agico" style="background:var(--fill);color:var(--accent)">${ic("plus")}</span><span class="nm">Add agent</span></a></aside>
+  <section class="card" style="min-width:0">${a?agentDetail(a,tab):""}</section></div></div>`;
 }
 function agentDetail(a,tab){
  const T=[["activity","Activity"],["instructions","Instructions"],["context","Context"],["settings","Settings"],["test","Test run"]];
@@ -1248,6 +1274,23 @@ function qItemHTML(q,e,a){
   ${q.reason?`<div class="r">${esc(q.reason)}</div>`:""}
   ${(q.action==="reply"||q.action==="send")&&q.param?`<div class="dr">${esc(String(q.param).replace(/\{first\}/g,firstName(dispName(e))))}</div>`:""}
   <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn pri sm" data-a="approve" data-id="${q.id}">Approve</button><button class="btn sm" data-a="openmail" data-id="${e.id}">View email</button><button class="btn sm" data-a="dismiss" data-id="${q.id}">Dismiss</button></div></div>`;
+}
+/* Ready-made agents. Every preset starts in "Asks first", so nothing happens until you approve it or switch it to automatic. */
+const AGENT_PRESETS=[
+ {key:"newsletters",name:"Newsletter tidy",color:"#30b0c7",icon:"mail",blurb:"Archives newsletters and digests.",cfg:{field:"type",value:"newsletter",action:"letgo"}},
+ {key:"notifications",name:"Notification tidy",color:"#8e8e93",icon:"bot",blurb:"Archives low-importance notifications from tools and services. Leaves anything important, such as security alerts.",cfg:{field:"type",value:"notification",maxI:3,action:"letgo"}},
+ {key:"sales",name:"Sales filter",color:"#ff9f0a",icon:"letgo",blurb:"Archives sales and marketing email.",cfg:{field:"type",value:"sales",action:"letgo"}},
+ {key:"meetings",name:"Meeting assistant",color:"#5e5ce6",icon:"spark",blurb:"Drafts replies to meeting requests with times from your availability.",cfg:{field:"type",value:"meeting",action:"reply",allowed:["reply","pin"],param:"Hi {first},\n\nThanks for this. I could do Tuesday or Thursday afternoon. Would either work?\n",instructions:"For meeting requests, draft a short, friendly reply. Propose two times from my availability in the context. If the request is from my manager, accept their suggested time instead. If there's no clear ask for a meeting, do nothing.",context:"My availability: Tuesday and Thursday afternoons, 14:00 to 17:00 UK time.\nI prefer 30-minute meetings."}},
+ {key:"invoices",name:"Supplier invoices",color:"#34c759",icon:"spark",blurb:"Files invoices and receipts under Finance; pins big or overdue ones.",cfg:{field:"any",value:"invoice",action:"project",param:"Finance",allowed:["project","pin","done"],instructions:"For invoices and receipts, file them under the project Finance. If the amount is over £5,000 or it says overdue, pin it instead so I see it today."}},
+ {key:"vip",name:"VIP watcher",color:"#ff375f",icon:"spark",blurb:"Pins anything your VIPs ask you, so it reaches Do today.",cfg:{field:"all",value:"",action:"pin",allowed:["pin","reply"],instructions:"If an email is from someone listed as a VIP in the context and asks me something, pin it. If they're only sharing information, do nothing.",context:"VIPs: (add names or email addresses here)"}}
+];
+function addPreset(key){const p=AGENT_PRESETS.find(x=>x.key===key);if(!p)return;
+ const ag=newAgent(Object.assign({name:p.name,color:p.color,mode:"ask",preset:p.key},p.cfg));S.set.agents.push(ag);S.set.agentsChosen=true;saveSet();S.modal=null;
+ go("agents",ag.id,(p.cfg.instructions?"instructions":"settings"));toast(`Added “${p.name}”. It asks before acting.`);}
+function presetGalleryHTML(){
+ const have=new Set(S.set.agents.map(a=>a.preset).filter(Boolean));
+ return `<div class="apg">${AGENT_PRESETS.map(p=>`<div class="apc"><span class="agico" style="background:${p.color}">${ic(p.icon)}</span><div class="apc-x"><b>${esc(p.name)}</b><span class="note">${esc(p.blurb)}</span></div>${have.has(p.key)?`<span class="note">Added</span>`:`<button class="btn sm" data-a="addpreset" data-v="${p.key}">${ic("plus")}Add</button>`}</div>`).join("")}
+  <div class="apc own"><span class="agico" style="background:var(--fill);color:var(--accent)">${ic("pen")}</span><div class="apc-x"><b>Create your own</b><span class="note">Describe it in plain language, or pick one scope and one action.</span></div><button class="btn sm pri" data-a="newagent">Create</button></div></div>`;
 }
 const TEMPLATES={
  "Meeting replies":{field:"type",value:"meeting",action:"reply",allowed:["reply","pin"],instructions:"For meeting requests, draft a short, friendly reply proposing two times from my availability in the context. If it's from my manager, accept their suggested time. If it isn't really a meeting request, do nothing."},
@@ -1337,7 +1380,7 @@ function renderSheet(){
   <div class="sh-foot">${open?`<button class="btn pri sm" data-a="openmail" data-id="${e.id}" data-v="reply">${ic("reply")}Reply</button><button class="btn sm" data-a="s-done" data-id="${e.id}">Done</button><button class="btn sm" data-a="s-letgo" data-id="${e.id}">Archive</button><button class="btn sm" data-a="s-pin" data-id="${e.id}">${e.pinned?"Unpin":"Pin"}</button><button class="btn sm" data-a="delegate" data-id="${e.id}">Forward</button>`:e.status==="ready"?`<button class="btn pri sm" data-a="openmail" data-id="${e.id}" data-v="reply">${ic("send")}Review and send</button>`:e.status!=="sent"&&e.status!=="delegated"?`<button class="btn sm" data-a="reopen" data-id="${e.id}">Move back to inbox</button>`:""}</div></aside>`);
  const nb=o.querySelector(".sh-body");if(nb)nb.scrollTop=top;
 }
-function renderModal(){
+function renderModal(){setTimeout(unsubUI,0);
  const o=document.getElementById("overlay");const keep=captureFocus();o.querySelectorAll(".modal,.scrim.m").forEach(x=>x.remove());
  const M=S.modal;if(!M)return;let h="",title="",foot="",wide=false;
  if(M.t==="compose"){title="New email";wide=true;
@@ -1565,7 +1608,8 @@ async function onClick(ev){
    const ag=newAgent(Object.assign({name:name||(tpl==="blank"?"New agent":tpl)},TEMPLATES[tpl]||{}));
    if(tpl==="Meeting replies")ag.context="My availability: Tuesday and Thursday afternoons, 14:00 to 17:00 UK time.";
    if(tpl==="VIP watcher")ag.context="VIPs: (add names or email addresses here)";
-   S.set.agents.push(ag);saveSet();S.modal=null;go("agents",ag.id,tpl==="blank"?"settings":"instructions");toast(`Created “${ag.name}”`);break;}
+   S.set.agents.push(ag);S.set.agentsChosen=true;saveSet();S.modal=null;go("agents",ag.id,tpl==="blank"?"settings":"instructions");toast(`Created “${ag.name}”`);break;}
+  case "addpreset":addPreset(v);break;
   case "delagent":S.modal={t:"delagent",id};renderModal();break;
   case "dodelagent":{S.set.agents=S.set.agents.filter(x=>x.id!==id);const rm=S.queue.filter(q=>q.agentId===id).map(q=>q.id);S.queue=S.queue.filter(q=>q.agentId!==id);saveQueue([],rm);saveSet();S.modal=null;go("agents");break;}
   case "actfilter":S.actFilter=v;render();break;
@@ -1672,7 +1716,8 @@ document.addEventListener("change",ev=>{const t=ev.target;const id=t.dataset&&t.
  if(t.dataset&&t.dataset.tf==="due"){const tk=S.tasks.find(x=>x.id===t.dataset.id);if(tk){tk.due=t.value||null;render();persistTask(tk);}return;}
  if(t.dataset&&t.dataset.tf==="title"){render();return;}
  if(t.dataset&&t.dataset.tl){const tk=S.tasks.find(x=>x.id===t.dataset.tl);if(tk&&t.value){tk.emailIds=[...new Set([...linkIds(tk),t.value])];normTask(tk);render();toast("Email linked");persistTask(tk);}return;}
- if(t.dataset&&t.dataset.us&&S.modal&&S.modal.op==="unsub"){if(t.checked)S.modal.sel.add(t.dataset.us);else S.modal.sel.delete(t.dataset.us);renderModal();return;}
+ if(t.dataset&&t.dataset.us&&S.modal&&S.modal.op==="unsub"){if(t.checked)S.modal.sel.add(t.dataset.us);else S.modal.sel.delete(t.dataset.us);unsubUI();return;}
+ if(t.id==="us-all"&&S.modal&&S.modal.op==="unsub"){const M=S.modal;M.sel=new Set(t.checked?M.list.map(x=>x.email):[]);document.querySelectorAll(".modal [data-us]").forEach(c=>{c.checked=t.checked;});unsubUI();return;}
  if(t.id==="us-arch"&&S.modal){S.modal.archive=t.checked;return;}
  if(t.id==="macct"){S.box.account=t.value;go("inbox",S.box.queue||"all");}
  else if(t.id==="mqsel"){goQueue(t.value);}

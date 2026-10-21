@@ -824,3 +824,18 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 .nsg-b{display:flex;flex-direction:column;gap:1px}
 .nsg-b>*{flex:none}
 .lbl3{display:none}
+/* agent preset gallery */
+.apg{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1px;background:var(--line);border-top:1px solid var(--line);margin-top:14px}
+.apc{display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--surface);min-width:0}
+.apc .agico{width:36px;height:36px;border-radius:10px;flex:none}
+.apc-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.apc-x b{font-size:14.5px}
+.apc.own{background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+.card:has(>.apg){overflow:hidden}
+/* unsubscribe dialog: select all and sender type */
+.usr.ush{position:sticky;top:0;z-index:1;background:var(--surface);border-bottom:1px solid var(--line)}
+.usl>.usr.ush+.usr{border-top:0}
+.ust{flex:none}
+.ust.newsletter,.ust.sales{color:var(--accent)}
+.ust.notification{color:var(--muted)}
+.lb .row .qa{display:none}

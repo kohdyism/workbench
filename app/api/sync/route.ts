@@ -1,4 +1,4 @@
-import { aiEnabled, scoreEmails, spend, type ScoreIn } from "@/lib/ai";
+import { aiEnabled, refund, scoreEmails, spend, type ScoreIn } from "@/lib/ai";
 import { rid } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { accessToken, ReconnectError, type AccountRow } from "@/lib/oauth";
@@ -94,8 +94,11 @@ export const POST = handle(async (req) => {
         console.error("Scoring batch failed", e);
       }
     });
+    // Only count emails Claude actually scored against the allowance.
+    await refund(userId, take.length - scored);
     const [{ n }] = await sql`select count(*)::int as n from emails where user_id = ${userId} and status = 'open' and scored_by <> 'ai'`;
-    remaining = grant < pending.length ? 0 : n; // stop the client loop once the allowance runs out
+    // Stop the client loop once the allowance runs out, or when a round makes no progress.
+    remaining = grant < pending.length || (take.length > 0 && scored === 0) ? 0 : n;
   }
 
   return Response.json({ added, scored, remaining, problems, state: await loadState(userId) });
