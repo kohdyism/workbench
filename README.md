@@ -7,12 +7,12 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 ## What it does
 
 - **Accounts:** people sign up with an email and password, or continue with Google or Microsoft, then connect as many Gmail and Outlook mailboxes as they like. A mailbox can belong to only one Workbench account.
-- **Dashboard** (left navigation: Dashboard, Inbox, Agents, Priorities, Activity, Accounts):
-  - A Today list sized to the person's time budget.
-  - Stat tiles: need you today, decisions waiting, agent approvals, handled by agents today.
-  - Plan, Delegate and Let go lanes.
-  - An agent activity feed and mailbox status.
-  - Hovering a score, tile, lane, sender or mailbox shows more detail. Clicking opens a popover, dialog or side sheet, so the view itself only changes for bigger tasks.
+- **Dashboard** (left navigation: Dashboard, Inbox, Tasks, Agents, Priorities, Activity, Accounts):
+  - **Your daily rundown** at the top: a newsletter-style briefing written by Claude once a day after your mail is sorted. It covers what came in (by kind and topic), what's urgent, what's on your to-do list, and a focus for the week, with each item linking to its email. You can collapse it or ask for a fresh one.
+  - **Buckets** in the middle. After the first sort, Claude suggests 3 to 7 buckets that match how you think about your work (projects, clients, kinds of mail). Each bucket card shows its open count, urgent, for approval, unread, tasks and priority, plus a Claude summary of what's in it. Clicking a card opens a panel beside it (or below it on narrow screens) with the bucket's email grouped by status: Urgent, For approval, Drafts ready, To do, Delegate, Low priority and Done this week. Agent suggestions and suggested tasks can be approved right there. You can keep, edit or remove Claude's buckets, make your own (match by project, type, sender or keyword), and move any email to another bucket.
+  - Stat tiles, the Today list, the Plan, Delegate and Let go lanes, a breakdown by project, type, organisation or mailbox, a 7-day chart, a "Waiting for your approval" card, a tasks card, agent activity and mailbox status.
+  - Hovering a score, tile, lane, bucket stat, sender or mailbox shows more detail. Clicking opens a popover, dialog, side sheet or panel, so the view itself only changes for bigger tasks.
+- **Tasks:** create a task from any email (title, due date, notes), or approve one that Claude suggests while sorting. **Claude's suggestions never become tasks until you approve them**; you can edit or dismiss them instead. Tasks show on the dashboard, in buckets, on the email itself, and on their own Tasks page with due, overdue and done.
 - **Inbox:** a normal mail client across every connected mailbox.
   - Folders (Inbox, Drafts, Done), a mailbox filter and search.
   - A reading pane that shows the original formatted email in a sandboxed frame, with remote images blocked until you choose to show them.
@@ -26,7 +26,7 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 
   An agent with instructions is Claude-powered: Claude reads each email in its scope and decides an action, a draft and a reason. Without instructions, it applies one fixed action.
 - **Scoring:** Claude rates urgency, importance and effort (0 to 10), sets a type and project, and summarises each email. People set their own weights, per-sender rules, an "about me" note and plain-language context for the week, which becomes rules that expire on Friday.
-- **Mailbox actions:** Done archives the email. Let go archives it with a `Workbench/Let go` label (Gmail) or category (Outlook). Pin stars or flags it. Workbench can also save real drafts, send replies in the thread, forward, and send new mail.
+- **Mailbox actions:** Opening an email marks it read in your mailbox. Done archives the email. Let go archives it with a `Workbench/Let go` label (Gmail) or category (Outlook). Pin stars or flags it. Workbench can also save real drafts, send replies in the thread, forward, and send new mail.
 - **Safety:** agents can only send automatically to email with importance 4 or lower, and the server enforces this. Sending always has a confirm step for people. Archiving, labelling and pinning can be undone from Activity; sends and forwards can't.
 - **Demo mode:** a sample inbox that runs entirely in the browser, with no sign-in.
 
@@ -45,6 +45,8 @@ app/api/sync                             pull new mail, score it with Claude
 app/api/actions                          done, letgo, pin, reply, send, delegate, project, reopen
 app/api/undo                             reverse an action in the mailbox
 app/api/compose                          send or draft a new email
+app/api/tasks (POST) | tasks/[id] (DELETE)  create, update and delete tasks
+app/api/insights                         Claude: bucket suggestions, bucket summaries, daily rundown
 app/api/emails/[id]/original             fetch the original formatted message
 app/api/agents/run                       Claude decides what an agent does with each email
 app/api/draft | context | agents/build   other Claude features

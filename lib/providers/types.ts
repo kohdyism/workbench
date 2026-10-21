@@ -12,6 +12,7 @@ export type Incoming = {
   body: string;
   date: string;
   pinned: boolean;
+  unread: boolean;
 };
 
 /** The provider-side message a mailbox action works on. */
@@ -24,6 +25,7 @@ export interface MailProvider {
   archive(token: string, t: Target): Promise<string>;
   unarchive(token: string, t: Target): Promise<string>;
   setPinned(token: string, t: Target, on: boolean): Promise<void>;
+  markRead(token: string, t: Target): Promise<void>;
   label(token: string, t: Target, name: string): Promise<void>;
   draftReply(token: string, t: Target, text: string): Promise<void>;
   sendReply(token: string, t: Target, text: string): Promise<void>;

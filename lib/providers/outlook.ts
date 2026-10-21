@@ -33,6 +33,7 @@ type GraphMsg = {
   bodyPreview?: string;
   body?: { content?: string };
   flag?: { flagStatus?: string };
+  isRead?: boolean;
 };
 
 const recipients = (xs: string[]) => xs.map((address) => ({ emailAddress: { address } }));
@@ -49,7 +50,7 @@ const move = async (token: string, id: string, dest: string) =>
 export const outlook: MailProvider = {
   async list(token, { days, max, known }) {
     const since = new Date(Date.now() - days * 864e5).toISOString();
-    const select = "id,conversationId,internetMessageId,subject,from,toRecipients,receivedDateTime,bodyPreview,body,flag";
+    const select = "id,conversationId,internetMessageId,subject,from,toRecipients,receivedDateTime,bodyPreview,body,flag,isRead";
     const path =
       `/mailFolders/inbox/messages?$top=${max}&$select=${select}` +
       `&$filter=${encodeURIComponent(`receivedDateTime ge ${since}`)}&$orderby=${encodeURIComponent("receivedDateTime desc")}`;
@@ -69,11 +70,15 @@ export const outlook: MailProvider = {
           body: (x.body?.content || "").replace(/\r/g, "").trim().slice(0, 8000),
           date: x.receivedDateTime || new Date().toISOString(),
           pinned: x.flag?.flagStatus === "flagged",
+          unread: x.isRead === false,
         })
       );
   },
   archive: (token, t) => move(token, t.providerId, "archive"),
   unarchive: (token, t) => move(token, t.providerId, "inbox"),
+  async markRead(token, t) {
+    await m(token, `/messages/${t.providerId}`, { method: "PATCH", json: { isRead: true } });
+  },
   async setPinned(token, t, on) {
     await m(token, `/messages/${t.providerId}`, { method: "PATCH", json: { flag: { flagStatus: on ? "flagged" : "notFlagged" } } });
   },

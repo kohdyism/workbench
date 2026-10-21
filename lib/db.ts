@@ -92,6 +92,21 @@ alter table log add column if not exists reason text;
 alter table queue add column if not exists action text;
 alter table queue add column if not exists param text;
 alter table queue add column if not exists reason text;
+alter table emails add column if not exists unread boolean not null default false;
+create table if not exists tasks (
+  id text primary key,
+  user_id text not null references users(id) on delete cascade,
+  email_id text references emails(id) on delete set null,
+  title text not null,
+  notes text not null default '',
+  due date,
+  status text not null default 'open',
+  source text not null default 'user',
+  key text,
+  created_at timestamptz not null default now(),
+  done_at timestamptz
+);
+create index if not exists tasks_user on tasks (user_id, status);
 `;
 
 export function ready(): Promise<void> {

@@ -83,6 +83,7 @@ export const gmail: MailProvider = {
         body: bodyOf(m.payload || {}).slice(0, 8000),
         date: new Date(Number(m.internalDate) || Date.now()).toISOString(),
         pinned: (m.labelIds || []).includes("STARRED"),
+        unread: (m.labelIds || []).includes("UNREAD"),
       });
     });
     return out;
@@ -94,6 +95,9 @@ export const gmail: MailProvider = {
   async unarchive(token, t) {
     await modify(token, t.providerId, ["INBOX"], []);
     return t.providerId;
+  },
+  async markRead(token, t) {
+    await modify(token, t.providerId, [], ["UNREAD"]);
   },
   async setPinned(token, t, on) {
     await modify(token, t.providerId, on ? ["STARRED"] : [], on ? [] : ["STARRED"]);

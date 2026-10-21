@@ -31,9 +31,9 @@ export const POST = handle(async (req) => {
       for (const m of incoming) {
         const res = await sql`
           insert into emails (id, user_id, account_id, provider_id, thread_id, message_id, from_name, from_email,
-            to_addr, subject, snippet, body, date, pinned)
+            to_addr, subject, snippet, body, date, pinned, unread)
           values (${rid(10)}, ${userId}, ${a.id}, ${m.providerId}, ${m.threadId}, ${m.messageId}, ${m.fromName},
-            ${m.fromEmail}, ${m.to}, ${m.subject.slice(0, 500)}, ${m.snippet.slice(0, 500)}, ${m.body}, ${m.date}, ${m.pinned})
+            ${m.fromEmail}, ${m.to}, ${m.subject.slice(0, 500)}, ${m.snippet.slice(0, 500)}, ${m.body}, ${m.date}, ${m.pinned}, ${m.unread})
           on conflict (account_id, provider_id) do nothing`;
         added += res.count;
       }

@@ -10,7 +10,7 @@ export const maxDuration = 60;
 
 type Body = { ids: string[]; action: string; param?: string; actor?: string; text?: string; agentId?: string; reason?: string; params?: Record<string, string> };
 
-const ACTIONS = ["done", "letgo", "delegate", "pin", "reply", "send", "project", "reopen", "agentsran"];
+const ACTIONS = ["read", "done", "letgo", "delegate", "pin", "reply", "send", "project", "reopen", "agentsran"];
 const AUTO_SEND_MAX_IMPORTANCE = 4;
 const isEmail = (s: string) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(s);
 
@@ -33,6 +33,14 @@ export const POST = handle(async (req) => {
   const param = String(b.param || "").slice(0, 10000);
   const sql = db();
 
+  if (b.action === "read") {
+    const { rows, tokenFor, providerOf } = await loadForAction(userId, ids);
+    await pool(rows.filter((r) => r.unread), 4, async (r) => {
+      try { await providerOf(r).markRead(await tokenFor(r.account_id), target(r)); } catch { /* still mark it read here */ }
+    });
+    await sql`update emails set unread = false where user_id = ${userId} and id = any(${ids})`;
+    return Response.json({ emails: await emailsByIds(userId, ids), log: null, failed: [] });
+  }
   if (b.action === "agentsran") {
     await sql`update emails set agents_ran = true where user_id = ${userId} and id = any(${ids})`;
     return Response.json({ emails: await emailsByIds(userId, ids), log: null, failed: [] });
