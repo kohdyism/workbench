@@ -33,6 +33,11 @@ export interface MailProvider {
   /** A new message (not a reply). */
   sendNew(token: string, m: NewMessage): Promise<void>;
   draftNew(token: string, m: NewMessage): Promise<void>;
+  /** Moves to the bin (Gmail Bin, Outlook Deleted Items), which empties itself after about 30 days. Returns the id afterwards. */
+  trash(token: string, t: Target): Promise<string>;
+  untrash(token: string, t: Target): Promise<string>;
+  /** The sender's List-Unsubscribe and List-Unsubscribe-Post headers, if any. */
+  unsubInfo(token: string, t: Target): Promise<{ header: string; post: string }>;
   /** The message as the sender wrote it, fetched live: HTML when there is one, otherwise text. */
   original(token: string, t: Target): Promise<{ html: string | null; text: string; to: string; cc: string }>;
 }

@@ -96,6 +96,20 @@ export const gmail: MailProvider = {
     await modify(token, t.providerId, ["INBOX"], []);
     return t.providerId;
   },
+  async trash(token, t) {
+    await g(token, `/messages/${t.providerId}/trash`, { method: "POST" });
+    return t.providerId;
+  },
+  async untrash(token, t) {
+    await g(token, `/messages/${t.providerId}/untrash`, { method: "POST" });
+    return t.providerId;
+  },
+  async unsubInfo(token, t) {
+    const m = await g(token, `/messages/${t.providerId}?format=metadata&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`);
+    const h: Record<string, string> = {};
+    for (const x of m.payload?.headers || []) h[String(x.name).toLowerCase()] = x.value;
+    return { header: h["list-unsubscribe"] || "", post: h["list-unsubscribe-post"] || "" };
+  },
   async markRead(token, t) {
     await modify(token, t.providerId, [], ["UNREAD"]);
   },

@@ -26,7 +26,10 @@ export const POST = handle(async (req) => {
       const token = await tokenFor(r.account_id);
       const mail = providerOf(r);
       let providerId = r.provider_id as string;
-      if (ARCHIVED.includes(r.status) && !ARCHIVED.includes(s.status)) providerId = await mail.unarchive(token, target(r));
+      if (r.status === "deleted" && s.status !== "deleted") {
+        providerId = await mail.untrash(token, target(r));
+        if (ARCHIVED.includes(s.status)) providerId = await mail.archive(token, { ...target(r), providerId });
+      } else if (ARCHIVED.includes(r.status) && !ARCHIVED.includes(s.status)) providerId = await mail.unarchive(token, target(r));
       if (Boolean(r.pinned) !== Boolean(s.pinned)) await mail.setPinned(token, { ...target(r), providerId }, s.pinned);
       await sql`update emails set status = ${s.status}, pinned = ${s.pinned}, draft = ${s.draft || ""},
         delegated_to = ${s.delegated_to || ""}, handled_at = ${s.handled_at}, provider_id = ${providerId},

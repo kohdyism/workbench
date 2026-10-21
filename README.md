@@ -15,9 +15,9 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
   - Sections can be collapsed; Workbench remembers your choice.
 - **Dashboard (Overview)**, ordered from "what needs me now" down to background detail:
   - **A sticky progress strip** under the greeting stays in view as you scroll: today's progress, Urgent, Needs your OK, Tasks and Replies owed. Each number opens that list in the Inbox at its first email. The time budget, this week's context and the ranking preset sit at the right end.
-  - **Your daily rundown:** a newsletter-style briefing written by Claude once a day. It shows the headline and summary; open it for the full briefing, with each item linking to its email.
+  - **Your daily rundown:** a newsletter-style briefing written by Claude once a day. Minimised, it's a slim strip with the headline and a one-line summary; **Read all** opens the full briefing, with each item linking to its email.
   - **Do today** with a **Start** button, links to Do later, Hand off and Low priority underneath, and **Tasks** below. **Needs your OK** sits alongside with agent actions, suggested tasks and drafts ready to send; approve them in place, or choose **One by one** to review each with its email.
-  - **Buckets** in brief: one line per bucket with its open count and what's pressing. Clicking one opens that bucket as a list in the Inbox.
+  - **Bucket cards:** each shows its open count, a summary, and status links for Urgent, For your OK and Unread. Clicking a card or a status opens the bucket in a panel on the right, already filtered to that status. The panel has the summary and numbers, the bucket's email by status, **Work through** (opens it in the Inbox), Edit, Keep or Remove, and bulk actions for everything open in it: **Mark read**, **Archive all**, **Unsubscribe…** and **Delete all**.
   - **Behind the scenes**, at the bottom: the last 7 days, agent activity and mailbox status.
 - **Working through email:** clicking an email anywhere opens it in the Inbox inside the list you came from, so you keep your place.
   - The toolbar shows where you are ("2 of 7") with previous and next.
@@ -41,6 +41,9 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 
   An agent with instructions is Claude-powered: Claude reads each email in its scope and decides an action, a draft and a reason. Without instructions, it applies one fixed action.
 - **Scoring:** Claude rates urgency, importance and effort (0 to 10), sets a type and project, and summarises each email. People set their own weights, per-sender rules, an "about me" note and plain-language context for the week, which becomes rules that expire on Friday.
+- **Delete:** delete one email from its row or the email view (or press #), or every open email in a bucket. Deleted email goes to Gmail's Bin or Outlook's Deleted Items, which empty after about 30 days, and can be undone from the toast or Activity. Only you can delete; agents can't.
+- **Unsubscribe:** from a bucket, pick which senders to leave. Newsletters, notifications and sales email are ticked for you, and people are not. Workbench uses the unsubscribe option each sender includes (List-Unsubscribe): a one-click request where offered, otherwise an unsubscribe email from your mailbox, otherwise a link to their page for you to finish. It can also archive their emails. One-click requests only go to public https addresses, without following redirects.
+- **Move to bucket:** any email can be moved to another bucket from its row or the email view.
 - **Mailbox actions:** Opening an email marks it read in your mailbox. Done archives the email. Archive puts it away with a `Workbench/Low priority` label (Gmail) or category (Outlook). Pin stars or flags it. Workbench can also save real drafts, send replies in the thread, forward, and send new mail.
 - **Safety:** agents can only send automatically to email with importance 4 or lower, and the server enforces this. Sending always has a confirm step for people. Archiving, labelling and pinning can be undone from Activity; sends and forwards can't.
 - **Demo mode:** a sample inbox that runs entirely in the browser, with no sign-in.
@@ -57,7 +60,8 @@ Anyone can sign in with their own Google or Microsoft account. Each person's mai
 app/api/auth/signup | login | logout      email and password accounts
 app/api/auth/[provider]/start|callback   OAuth sign-in and mailbox linking
 app/api/sync                             pull new mail, score it with Claude
-app/api/actions                          done, letgo, pin, reply, send, delegate, project, reopen
+app/api/actions                          read, done, letgo, delete, pin, reply, send, delegate, project, reopen
+app/api/unsubscribe                      unsubscribe from senders (List-Unsubscribe)
 app/api/undo                             reverse an action in the mailbox
 app/api/compose                          send or draft a new email
 app/api/tasks (POST) | tasks/[id] (DELETE)  create, update and delete tasks

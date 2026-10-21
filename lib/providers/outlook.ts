@@ -76,6 +76,14 @@ export const outlook: MailProvider = {
   },
   archive: (token, t) => move(token, t.providerId, "archive"),
   unarchive: (token, t) => move(token, t.providerId, "inbox"),
+  trash: (token, t) => move(token, t.providerId, "deleteditems"),
+  untrash: (token, t) => move(token, t.providerId, "inbox"),
+  async unsubInfo(token, t) {
+    const x = await m(token, `/messages/${t.providerId}?$select=internetMessageHeaders`);
+    const hs: { name?: string; value?: string }[] = x?.internetMessageHeaders || [];
+    const get = (n: string) => hs.find((y) => String(y.name).toLowerCase() === n)?.value || "";
+    return { header: get("list-unsubscribe"), post: get("list-unsubscribe-post") };
+  },
   async markRead(token, t) {
     await m(token, `/messages/${t.providerId}`, { method: "PATCH", json: { isRead: true } });
   },

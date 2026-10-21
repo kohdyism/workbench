@@ -10,7 +10,7 @@ export const maxDuration = 60;
 
 type Body = { ids: string[]; action: string; param?: string; actor?: string; text?: string; agentId?: string; reason?: string; params?: Record<string, string> };
 
-const ACTIONS = ["read", "done", "letgo", "delegate", "pin", "reply", "send", "project", "reopen", "agentsran"];
+const ACTIONS = ["read", "delete", "done", "letgo", "delegate", "pin", "reply", "send", "project", "reopen", "agentsran"];
 const AUTO_SEND_MAX_IMPORTANCE = 4;
 const isEmail = (s: string) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(s);
 
@@ -102,8 +102,14 @@ export const POST = handle(async (req) => {
           await mail.label(token, t, `Workbench/${own}`).catch(() => undefined);
           await sql`update emails set ai = jsonb_set(coalesce(ai, '{}'::jsonb), '{project}', to_jsonb(${own}::text)) where id = ${r.id}`;
           break;
+        case "delete":
+          if (actor !== "You") throw new Error("Only you can delete email");
+          if (r.status !== "deleted") providerId = await mail.trash(token, t);
+          await sql`update emails set status = 'deleted', handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
+          break;
         case "reopen":
-          if (ARCHIVED.includes(r.status)) providerId = await mail.unarchive(token, t);
+          if (r.status === "deleted") providerId = await mail.untrash(token, t);
+          else if (ARCHIVED.includes(r.status)) providerId = await mail.unarchive(token, t);
           await sql`update emails set status = 'open', delegated_to = '', handled_at = null, provider_id = ${providerId} where id = ${r.id}`;
           break;
       }
@@ -116,7 +122,7 @@ export const POST = handle(async (req) => {
   let log = null;
   if (done.length) {
     const verb: Record<string, string> = {
-      done: "Done", letgo: "Archived", delegate: "Delegated", pin: "Pinned or unpinned", reply: "Saved a draft reply to",
+      done: "Done", delete: "Deleted", letgo: "Archived", delegate: "Delegated", pin: "Pinned or unpinned", reply: "Saved a draft reply to",
       send: "Sent a reply to", project: "Filed", reopen: "Reopened",
     };
     const one = rows.find((r) => r.id === done[0]);
