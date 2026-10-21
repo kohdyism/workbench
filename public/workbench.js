@@ -71,7 +71,7 @@ const S={
  mode:"loading",user:null,accounts:[],emails:[],set:DEFAULT_SET(),log:[],queue:[],ai:{enabled:false,remaining:0},
  route:{view:"dashboard"},sheet:null,sheetFull:false,drafts:{},drafting:null,confirmSend:null,
  modal:null,syncing:false,syncNote:"",busy:new Set(),ctxBusy:false,
- box:{queue:"all",lastIds:null,picked:new Set(),pickAnchor:null,folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
+ box:{queue:"all",lastIds:null,fh:{},picked:new Set(),pickAnchor:null,folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
  tests:{},actFilter:"all",authErr:"",authBusy:false,dim:"project",showAllDims:false,showAllApprovals:false,qEdits:{},qEditing:null,tasks:[],keepTasks:new Set(),bucketSel:null,bview:"topic",navOpen:(()=>{try{return JSON.parse(localStorage.getItem("wb.nav")||"{}")||{};}catch(e){return {};}})(),bucketStatus:null,rundownOpen:false,sumBusy:false,rdBusy:false,bkBusy:false,tsEdit:null,showDone:false,readSent:new Set()
 };
 
@@ -413,9 +413,14 @@ function render(){
  const views={dashboard:vDashboard,buckets:vBuckets,inbox:vInbox,tasks:vTasks,agents:vAgents,priorities:vPriorities,activity:vActivity,accounts:vAccounts,connect:vConnect};
  const v=views[r.view]?r.view:"dashboard";
  const keep=captureFocus();
- const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;
+ // Remember where things were, so redraws (marking read, a sync, the original arriving) don't move anything.
+ const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;let anchor=null;
+ if(lb){const top=lb.getBoundingClientRect().top;const a=[...lb.querySelectorAll(".row[data-id]")].find(x=>x.getBoundingClientRect().bottom>top+1);if(a)anchor={id:a.dataset.id,off:a.getBoundingClientRect().top-top};}
+ const rd=document.querySelector(".mail .read");const rdTop=rd?rd.scrollTop:0;const rdFor=S.box.sel;
  app().innerHTML=`<div class="shell${v==="inbox"?" fixed":""}">${navHTML(v)}<div class="content">${views[v]()}</div></div>`;
- const lb2=document.querySelector(".mail .lb");if(lb2)lb2.scrollTop=lbTop;
+ const lb2=document.querySelector(".mail .lb");if(lb2){lb2.scrollTop=lbTop;
+  const a2=anchor&&lb2.querySelector(`.row[data-id="${CSS.escape(anchor.id)}"]`);if(a2)lb2.scrollTop+=(a2.getBoundingClientRect().top-lb2.getBoundingClientRect().top)-anchor.off;}
+ const rd2=document.querySelector(".mail .read");if(rd2&&rdFor&&S.box.sel===rdFor)rd2.scrollTop=rdTop;
  restoreFocus(keep);afterRender(v);renderOverlays();
 }
 function renderChrome(){const el=document.getElementById("topstatus");if(el)el.innerHTML=statusHTML();}
@@ -1177,7 +1182,7 @@ function readingHTML(e,list){
   ${open||ready?`<button class="btn sm" data-a="addtask" data-id="${e.id}">${ic("task")}Add task</button>`:""}</div>`;
  let bodyHTML;
  if(o&&o.loading)bodyHTML=`<div class="plain muted">Loading message…</div>`;
- else if(o&&o.html&&!S.box.plain)bodyHTML=`<iframe class="frame" title="Message" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="${esc(frameDoc(o.html))}" style="height:min(70vh,900px)"></iframe>`;
+ else if(o&&o.html&&!S.box.plain)bodyHTML=`<iframe class="frame" id="msgframe" data-id="${e.id}" title="Message" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcdoc="${esc(frameDoc(o.html))}" style="height:${S.box.fh[e.id+(S.box.images?"i":"")]||420}px"></iframe>`;
  else bodyHTML=`<div class="plain">${esc((o&&o.text)||e.body||e.snippet||"(no text)")}</div>`;
  const qs=queueItems().filter(x=>x.e.id===e.id);
  const to=(o&&o.to)||e.to||"";
@@ -1196,7 +1201,7 @@ function readingHTML(e,list){
 }
 function frameDoc(html){
  const img=S.box.images?"img-src data: cid: https: http:;":"img-src data: cid:;";
- return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${img} style-src 'unsafe-inline'; font-src data:;"><base target="_blank"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14.5px;line-height:1.5;color:#1d1d1f;background:#fff;margin:16px 18px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
+ return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${img} style-src 'unsafe-inline'; font-src data:;"><base target="_blank"><style>html{overflow-y:hidden}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14.5px;line-height:1.5;color:#1d1d1f;background:#fff;margin:16px 18px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
 }
 function composerHTML(e,c){
  const draft=c.mode==="reply"?(S.drafts[e.id]??e.draft??""):(c.note||"");const busy=S.busy.has(e.id);
@@ -1509,7 +1514,13 @@ if(matchMedia("(hover:hover)").matches){
  document.addEventListener("scroll",()=>{tip.hidden=true;},true);
 }
 let toastT;function toast(msg,undoId){const t=document.getElementById("toast");t.innerHTML=`<span>${esc(msg)}</span>${undoId?`<button data-a="undo" data-id="${undoId}">Undo</button>`:""}`;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,5000);}
-function afterRender(v){if(v==="inbox"&&S.box.sel){const e=byId(S.box.sel);if(e&&!S.box.orig[e.id])loadOriginal(e);if(e&&e.unread&&!S.readSent.has(e.id)){S.readSent.add(e.id);e.unread=false;act([e.id],"read");setTimeout(render,0);}}
+/* Sizes the message frame to its content, so the reading pane scrolls as one page. Scripts stay blocked inside it. */
+function fitFrame(){const f=document.getElementById("msgframe");if(!f||f.dataset.fit)return;f.dataset.fit="1";
+ const key=f.dataset.id+(S.box.images?"i":"");
+ const measure=()=>{try{const d=f.contentDocument;if(!d||!d.documentElement)return;const h=Math.max(d.documentElement.scrollHeight,d.body?d.body.scrollHeight:0);if(h&&Math.abs(h-(S.box.fh[key]||0))>2){S.box.fh[key]=h;f.style.height=h+"px";}}catch(e){}};
+ const wire=()=>{measure();try{const d=f.contentDocument;d.querySelectorAll("img").forEach(i=>i.addEventListener("load",measure));if(window.ResizeObserver&&d.body)new ResizeObserver(measure).observe(d.body);}catch(e){}};
+ if(f.contentDocument&&f.contentDocument.readyState==="complete"&&f.contentDocument.body&&f.contentDocument.body.childNodes.length)wire();f.addEventListener("load",wire);}
+function afterRender(v){if(v==="inbox")fitFrame();if(v==="inbox"&&S.box.sel){const e=byId(S.box.sel);if(e&&!S.box.orig[e.id])loadOriginal(e);if(e&&e.unread&&!S.readSent.has(e.id)){S.readSent.add(e.id);e.unread=false;act([e.id],"read");setTimeout(render,0);}}
  if((v==="dashboard"||v==="buckets")&&S.scrollPanel){S.scrollPanel=false;const p=document.getElementById("bkpanel");if(p&&window.innerWidth<1100)p.scrollIntoView({behavior:"smooth",block:"start"});}}
 
 /* ================= events ================= */
