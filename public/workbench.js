@@ -496,7 +496,7 @@ function authHTML(){
    <p class="note" style="text-align:center">${signup?`Already have an account? <a href="#/login">Sign in</a>`:`New to Workbench? <a href="#/signup">Create an account</a>`}</p>
    <div class="or">or</div>
    <button class="btn lg" type="button" data-a="demo">${ic("play")}Try the demo inbox</button>
-   <p class="fine">Workbench reads your recent inbox to sort it and only sends when you, or an agent you allowed, say so. <a href="/privacy">Privacy</a></p>
+   <p class="fine">Workbench reads your recent inbox to sort it and only sends when you, or an agent you allowed, say so. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
   </form></section></div>`;
 }
 function vConnect(){

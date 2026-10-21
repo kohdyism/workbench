@@ -10,7 +10,7 @@ export default function Privacy() {
         <h1>Privacy</h1>
         <p>Workbench is run by {owner}. This page explains what it does with your email. Contact: {contact}.</p>
         <h2>What Workbench accesses</h2>
-        <p>When you connect a Google or Microsoft account, Workbench reads messages from your inbox from the last two weeks, and can archive, label, star or flag, draft, send and forward messages. It only sends or forwards when you press Send or Delegate, or when an agent you created and set to act automatically does so for low-importance mail.</p>
+        <p>When you connect a Google or Microsoft account, Workbench reads messages from your inbox from the last two weeks, and can archive, label, star or flag, move to the bin, draft, send and forward messages. It only sends or forwards when you press Send or Forward, or when an agent you created and set to act automatically does so for low-importance mail. It only moves email to the bin when you delete it yourself; agents cannot. When you choose Unsubscribe, it uses the unsubscribe option the sender included in their email, which may mean sending a request to the sender’s unsubscribe address or a short unsubscribe email from your mailbox.</p>
         <h2>What is stored</h2>
         <ul>
           <li>Your account email address and encrypted access tokens.</li>
