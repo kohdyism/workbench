@@ -75,7 +75,7 @@ export const POST = handle(async (req) => {
           await sql`update emails set status = 'done', handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
           break;
         case "letgo":
-          await mail.label(token, t, "Workbench/Let go").catch(() => undefined);
+          await mail.label(token, t, "Workbench/Low priority").catch(() => undefined);
           await archiveOnce();
           await sql`update emails set status = 'letgo', handled_at = ${now}, provider_id = ${providerId} where id = ${r.id}`;
           break;
@@ -116,7 +116,7 @@ export const POST = handle(async (req) => {
   let log = null;
   if (done.length) {
     const verb: Record<string, string> = {
-      done: "Done", letgo: "Let go", delegate: "Delegated", pin: "Pinned or unpinned", reply: "Saved a draft reply to",
+      done: "Done", letgo: "Archived", delegate: "Delegated", pin: "Pinned or unpinned", reply: "Saved a draft reply to",
       send: "Sent a reply to", project: "Filed", reopen: "Reopened",
     };
     const one = rows.find((r) => r.id === done[0]);

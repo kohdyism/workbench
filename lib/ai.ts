@@ -175,7 +175,7 @@ export async function buildAgent(desc: string, projects: string[]): Promise<Reco
     await claude(
       `Design an email agent from this description: """${desc.slice(0, 1000)}"""
 Fields: "sender" (name or email fragment), "project" (one of: ${projects.join(", ") || "General"}), "subject" (phrase), "type" (${TYPES.join("|")}), "any" (word anywhere).
-Actions: "letgo" (archive with a "Let go" label), "done" (archive), "pin" (star or flag), "reply" (save a draft reply; param is the text, may use {first} for the sender's first name), "send" (send a fixed reply; param is the text), "project" (param is a project name), "delegate" (forward; param is an email address).
+Actions: "letgo" (archive as low priority), "done" (archive), "pin" (star or flag), "reply" (save a draft reply; param is the text, may use {first} for the sender's first name), "send" (send a fixed reply; param is the text), "project" (param is a project name), "delegate" (forward; param is an email address).
 Reply with only JSON: {"name":"Short name","field":"type","value":"newsletter","maxImportance":null,"action":"letgo","param":"","mode":"ask"}. mode is "auto" only if the description clearly asks for no approval.`,
       SCORING_MODEL(),
       600
