@@ -262,6 +262,9 @@ async function decide(a,emails){
   }
   return out;
  }
+ // Without Claude, an agent with instructions can't judge each email. Falling back is fine for a narrow scope,
+ // but an agent that looks at all mail would act on everything, so it waits instead.
+ if((a.instructions||"").trim()&&a.field==="all")return [];
  const reason=(a.instructions||"").trim()?"Matched this agent's scope. Claude isn't available here, so the default action is used.":"Matched: "+plain(agentSentence(a));
  return emails.map(e=>({id:e.id,action:a.action,param:a.param,reason}));
 }
@@ -1286,7 +1289,10 @@ const AGENT_PRESETS=[
 ];
 function addPreset(key){const p=AGENT_PRESETS.find(x=>x.key===key);if(!p)return;
  const ag=newAgent(Object.assign({name:p.name,color:p.color,mode:"ask",preset:p.key},p.cfg));S.set.agents.push(ag);S.set.agentsChosen=true;saveSet();S.modal=null;
- go("agents",ag.id,(p.cfg.instructions?"instructions":"settings"));toast(`Added “${p.name}”. It asks before acting.`);}
+ go("agents",ag.id,"activity");toast(`Added “${p.name}”. Checking your inbox…`);
+ // Look at the mail already in the inbox once, so the new agent has something to show. It only suggests; nothing happens until you approve.
+ setTimeout(async()=>{const before=S.queue.filter(q=>q.agentId===ag.id).length;await runAgents(S.emails.filter(OPEN),{manual:true,only:ag.id});
+  const n=S.queue.filter(q=>q.agentId===ag.id).length-before;toast(n?`${p.name} has ${n} suggestion${n>1?"s":""} waiting in Needs your OK`:`${p.name} found nothing to do yet. It will check new mail as it arrives.`);render();},50);}
 function presetGalleryHTML(){
  const have=new Set(S.set.agents.map(a=>a.preset).filter(Boolean));
  return `<div class="apg">${AGENT_PRESETS.map(p=>`<div class="apc"><span class="agico" style="background:${p.color}">${ic(p.icon)}</span><div class="apc-x"><b>${esc(p.name)}</b><span class="note">${esc(p.blurb)}</span></div>${have.has(p.key)?`<span class="note">Added</span>`:`<button class="btn sm" data-a="addpreset" data-v="${p.key}">${ic("plus")}Add</button>`}</div>`).join("")}

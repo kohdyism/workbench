@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const DAYS = () => Number(process.env.SYNC_DAYS || 14);
-const MAX = () => Math.min(100, Number(process.env.SYNC_MAX || 60));
+const MAX = () => Math.min(200, Number(process.env.SYNC_MAX || 60));
 const SCORE_PER_SYNC = 30;
 
 /** Turns a provider error into something the person can act on. */
