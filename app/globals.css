@@ -813,3 +813,14 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 .row .qa{position:absolute;right:58px;top:50%;transform:translateY(-50%);padding:3px;border-radius:999px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 2px 8px rgba(0,0,0,.08);pointer-events:none;z-index:1}
 .row:hover .qa,.row:focus-within .qa{pointer-events:auto}
 @media (max-width:640px){.row .qa{display:none}}
+/* collapsible groups inside a nav section */
+.nsg{display:flex;flex-direction:column;margin-top:4px}
+.nsg>*{flex:none}
+.nsg-h{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:8px;font-size:12px;font-weight:600;color:var(--faint);letter-spacing:.02em;text-align:left}
+.nsg-h:hover{background:var(--fill);color:var(--muted)}
+.nsg-h svg.i{width:13px;height:13px;transition:transform .15s}
+.nsg-h .ct{margin-left:auto;font-size:12px;font-weight:600;color:var(--faint)}
+.nsg-h.here{color:var(--fg)}
+.nsg-b{display:flex;flex-direction:column;gap:1px}
+.nsg-b>*{flex:none}
+.lbl3{display:none}

@@ -421,6 +421,10 @@ function navHTML(v){
  const sub=(href,t,ct,cur,dot,hot)=>`<a class="nv sub" href="${href}" ${cur?'aria-current="page"':""}>${dot?`<span class="ldot" style="background:${dot}"></span>`:""}<span class="t">${esc(t)}</span>${ct?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a>`;
  const grp=(k,icon,t,href,active,ct,hot,kids)=>{const open=S.navOpen[k]??(active||k==="inbox"||k==="dashboard");
   return `<div class="ng${active?" act":""}"><div class="nvh"><a class="nv" href="${href}" ${active&&!open?'aria-current="page"':""} title="${t}">${ic(icon)}<span class="t">${t}</span>${ct&&!open?`<span class="ct${hot?" hot":""}">${ct}</span>`:""}</a><button class="nv-tg" data-a="navtg" data-v="${k}" aria-expanded="${open}" aria-label="${open?"Hide":"Show"} ${t} sections"><svg class="i" viewBox="0 0 24 24" style="transform:rotate(${open?0:-90}deg)">${I.chev}</svg></button></div>${open?`<div class="nsub">${kids()}</div>`:""}</div>`;};
+ const qsub=k=>sub(`#/inbox/${k}`,qLabel(k),k==="done"?"":queueCount(k)||"",rq===k,Q_DOT[k],k==="approval"&&queueCount(k)>0);
+ // A collapsible group inside a section. Open if you chose so, or if the list you're in is inside it.
+ const sgrp=(key,label,keys,kids,ct)=>{const here=keys.includes(rq);const open=S.navOpen[key]??here;
+  return `<div class="nsg${open?" open":""}"><button class="nsg-h${here&&!open?" here":""}" data-a="navtg" data-v="${key}" aria-expanded="${open}"><svg class="i" viewBox="0 0 24 24" style="transform:rotate(${open?0:-90}deg)">${I.chev}</svg><span>${label}</span>${!open&&ct?`<span class="ct">${ct}</span>`:""}</button>${open?`<div class="nsg-b">${kids()}</div>`:""}</div>`;};
  const sg=taskSuggestions().length,ot=openTasks().length;
  const topic=(S.set.buckets||[]).length?bucketData("topic"):[];
  return `<nav class="nav" aria-label="Main">
@@ -428,8 +432,10 @@ function navHTML(v){
   <div class="nav-sc">
   ${grp("dashboard","grid","Dashboard","#/dashboard",v==="dashboard"||v==="buckets",st.today.length||"",false,()=>sub("#/dashboard","Overview","",v==="dashboard")+sub("#/buckets","Buckets",topic.length||"",v==="buckets"))}
   ${grp("inbox","inbox","Inbox","#/inbox/all",v==="inbox",st.open.length+st.ready.length||"",false,()=>
-   QUEUES.map(([k,l])=>sub(`#/inbox/${k}`,l,k==="done"?"":queueCount(k)||"",rq===k,Q_DOT[k],k==="approval"&&queueCount(k)>0)).join("")
-   +(topic.length?`<div class="lbl3">Buckets</div>`+topic.map(d=>sub(`#/inbox/g-${d.b.id}`,d.b.name,d.active.length||"",rq==="g-"+d.b.id,d.b.color)).join(""):""))}
+   ["today","approval","all"].map(k=>qsub(k)).join("")
+   +sgrp("inbox.prio","By priority",["replies","plan","delegate","letgo"],()=>["replies","plan","delegate","letgo"].map(qsub).join(""))
+   +(topic.length?sgrp("inbox.bkt","Buckets",topic.map(d=>"g-"+d.b.id),()=>topic.map(d=>sub(`#/inbox/g-${d.b.id}`,d.b.name,d.active.length||"",rq==="g-"+d.b.id,d.b.color)).join(""),topic.length):"")
+   +sgrp("inbox.fold","Folders",["drafts","done"],()=>["drafts","done"].map(qsub).join("")))}
   ${grp("tasks","task","Tasks","#/tasks",v==="tasks",sg||ot||"",sg>0,()=>sub("#/tasks","To do",ot||"",v==="tasks"&&!r.id)+sub("#/tasks/suggested","Suggested",sg||"",v==="tasks"&&r.id==="suggested",null,sg>0)+sub("#/tasks/done","Done","",v==="tasks"&&r.id==="done"))}
   ${item("agents","bot","Agents",nq||"",nq>0)}
   <div class="sep"></div>
