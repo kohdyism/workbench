@@ -7,6 +7,7 @@
 /* ================= icons ================= */
 const I={
  check:'<path d="M5 12.5l4.2 4.2L19 7"/>',
+ minus:'<path d="M6 12h12"/>',
  trash:'<path d="M4 7h16M9 7V4.5h6V7M6.5 7l.8 12a1.5 1.5 0 001.5 1.4h6.4a1.5 1.5 0 001.5-1.4L17.5 7M10 11v6M14 11v6"/>',
  unsub:'<path d="M3.5 6.5h17v11h-17zM3.5 7l8.5 6 8.5-6M4 20L20 4"/>',
  move:'<path d="M4 7h7l2 2h7v9H4zM12 13h5M15 11l2 2-2 2"/>',
@@ -70,7 +71,7 @@ const S={
  mode:"loading",user:null,accounts:[],emails:[],set:DEFAULT_SET(),log:[],queue:[],ai:{enabled:false,remaining:0},
  route:{view:"dashboard"},sheet:null,sheetFull:false,drafts:{},drafting:null,confirmSend:null,
  modal:null,syncing:false,syncNote:"",busy:new Set(),ctxBusy:false,
- box:{queue:"all",lastIds:null,folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
+ box:{queue:"all",lastIds:null,picked:new Set(),pickAnchor:null,folder:"inbox",account:"all",q:"",sel:null,orig:{},images:false,plain:false,compose:null,filter:null},
  tests:{},actFilter:"all",authErr:"",authBusy:false,dim:"project",showAllDims:false,showAllApprovals:false,qEdits:{},qEditing:null,tasks:[],keepTasks:new Set(),bucketSel:null,bview:"topic",navOpen:(()=>{try{return JSON.parse(localStorage.getItem("wb.nav")||"{}")||{};}catch(e){return {};}})(),bucketStatus:null,rundownOpen:false,sumBusy:false,rdBusy:false,bkBusy:false,tsEdit:null,showDone:false,readSent:new Set()
 };
 
@@ -478,8 +479,8 @@ function rowHTML(e,opt={}){
  const sub=handled?esc(handledLabel(e)):`${a.project&&a.project!=="General"?`<button class="tag" data-a="project" data-v="${esc(a.project)}">${esc(a.project)}</button>`:""}<span style="overflow:hidden;text-overflow:ellipsis">${esc(a.ask&&a.ask!=="Nothing"?a.ask:a.summary||e.snippet||"")}</span>`;
  const badge=handled?"":e.status==="ready"?`<span class="pill p-ready" data-tip="A reply draft is saved in your mailbox">Draft</span>`:`<span class="score ${lane} num" data-tip="score:${e.id}">${e.by==="ai"||!live()||!S.ai.enabled?c.s.toFixed(1):"·"}</span>`;
  const tc=tasksFor(e.id).length;
- return `<div class="row${busy?" busy":""}${opt.sel?" sel":""}${e.unread&&!handled?" unread":""}" data-a="${opt.mail?"selmail":"openmail"}" data-id="${e.id}"${opt.q?` data-q="${esc(opt.q)}"`:""} tabindex="0" title="${opt.mail?"":"Open in Inbox"}">
-  <div class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</div>
+ return `<div class="row${busy?" busy":""}${opt.sel?" sel":""}${opt.mail&&S.box.picked.has(e.id)?" picked":""}${e.unread&&!handled?" unread":""}" data-a="${opt.mail?"selmail":"openmail"}" data-id="${e.id}"${opt.q?` data-q="${esc(opt.q)}"`:""} tabindex="0" title="${opt.mail?"":"Open in Inbox"}">
+  ${opt.mail?`<button class="rsel${S.box.picked.has(e.id)?" on":""}" data-a="rowpick" data-id="${e.id}" role="checkbox" aria-checked="${S.box.picked.has(e.id)}" aria-label="Select this email"><span class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</span><span class="rck" aria-hidden="true">${ic("check")}</span></button>`:`<div class="av" style="background:${avColor(name)}" aria-hidden="true">${esc(initials(name))}</div>`}
   <div class="tx"><div class="l1"><span class="who" data-a="sender" data-v="${esc(name)}" data-tip="sender:${esc(name)}">${esc(name)}</span>${e.unread&&!handled?`<span class="udot" title="Unread"></span>`:""}${tc?`<span class="tcnt" data-tip="${esc(tasksFor(e.id).map(t=>t.title).join(" · "))}">${ic("task")}${tc}</span>`:""}${e.pinned?`<span class="pin" title="Pinned">${ic("pin")}</span>`:""}<span class="when" data-tip="${esc(fullDate(e.date))}">${when(e.date)}</span></div>
    <div class="sub">${esc(e.subject)}</div><div class="sum">${sub}</div></div>
   <div class="rt"><div class="qa">${acts}</div>${badge}</div></div>`;
@@ -1114,14 +1115,14 @@ function vInbox(){
  const B=S.box;const r=S.route;
  let qk=isQueue(r.id)?r.id:(B.queue||"all");let sid=isQueue(r.id)?r.tab:r.id;
  if(qk.startsWith("g-")&&!qGroup(qk))qk="all";
- if(B.queue!==qk){B.lastIds=null;B.queue=qk;}
+ if(B.queue!==qk){B.lastIds=null;B.queue=qk;B.picked=new Set();}
  const base=queueEmails(qk);const list=inboxList(base);const ids=list.map(e=>e.id);
  // After you act on an email it leaves the queue, so move on to the next one in the same place.
  if(sid&&!base.some(e=>e.id===sid)&&B.lastIds&&B.lastIds.includes(sid)){
   const i=B.lastIds.indexOf(sid);const nx=B.lastIds.slice(i+1).find(x=>ids.includes(x))||B.lastIds.slice(0,i).reverse().find(x=>ids.includes(x))||null;
   sid=nx;B.compose=null;S.confirmSend=null;history.replaceState(null,"","#/inbox/"+[qk,nx].filter(Boolean).map(encodeURIComponent).join("/"));S.route=parseRoute();
  }
- B.lastIds=ids;B.sel=sid||null;
+ B.lastIds=ids;B.sel=sid||null;B.picked=new Set([...B.picked].filter(x=>ids.includes(x)));
  const sel=B.sel&&byId(B.sel);const st=compute();
  const f=B.filter;const fl=f?{project:"Project",sender:"From",decision:"Decisions",type:"Type",org:"Organisation",bucket:"Bucket"}[f.kind]+(f.v?": "+(f.kind==="bucket"?((bucketById(f.v)||OTHER).name):f.v):""):"";
  const g=qk.startsWith("g-")?qGroup(qk):null;const label=qLabel(qk);
@@ -1131,17 +1132,27 @@ function vInbox(){
  const blurb=g?(g.b.virtual?g.b.description:((S.set.bucketSummaries||{})[g.b.id]||{}).text||g.b.description||"Email in this bucket, most important first."):Q_BLURB[qk]||"";
  const qopts=`${QUEUES.map(([k,l])=>`<option value="${k}" ${qk===k?"selected":""}>${l}</option>`).join("")}${(S.set.buckets||[]).length?`<optgroup label="Buckets">${[...S.set.buckets,OTHER].map(b=>`<option value="g-${b.id}" ${qk==="g-"+b.id?"selected":""}>${esc(b.name)}</option>`).join("")}</optgroup>`:""}${g&&g.b.virtual?`<option value="${qk}" selected>${esc(g.b.name)}</option>`:""}`;
  const empty=B.q?emptyState("search","Nothing matches your search","Try a sender, subject or project."):f?emptyState("search","Nothing matches this filter","Clear the filter to see the whole list."):emptyState("check",`${esc(label)} is clear`,qk==="done"?"Emails you finish appear here.":"Nothing here right now.");
- const readPane=sel?readingHTML(sel,list):list.length?`<div class="read-empty"><div class="qclear">${emptyState("mail",`${list.length} in ${esc(label)}`,blurb)}<div class="qnext"><button class="btn pri sm" data-a="selmail" data-id="${list[0].id}">${ic("right")}Start with the first</button></div><p class="note">J and K move between emails. E marks done. R replies.</p></div></div>`:queueClearHTML(qk);
+ const readPane=sel?readingHTML(sel,list):list.length?`<div class="read-empty"><div class="qclear">${emptyState("mail",`${list.length} in ${esc(label)}`,blurb)}<div class="qnext"><button class="btn pri sm" data-a="selmail" data-id="${list[0].id}">${ic("right")}Start with the first</button></div><p class="note">J and K move between emails. X selects. E marks done. R replies. Shift-click to select a range.</p></div></div>`:queueClearHTML(qk);
  return topHTML("Inbox")+`<div class="mail${sel?" reading":""}">
   <section class="list" aria-label="${esc(label)}"><div class="lh">
    <div class="qh"><span class="ldot" style="background:${g?g.b.color:Q_DOT[qk]||"var(--faint)"}"></span><h2>${esc(label)}</h2><span class="num faint">${list.length}</span>${time?`<span class="note num">${time}</span>`:""}<span class="sp"></span>${bulk}</div>
    ${blurb?`<p class="note qb">${esc(blurb)}</p>`:""}
-   <div class="qrow"><select class="in qsel" id="mqsel" aria-label="Choose a list">${qopts}</select><label class="search">${ic("search")}<input id="mq" value="${esc(B.q)}" placeholder="Search this list" aria-label="Search this list"></label>
+   <div class="qrow"><button class="rsel-all${B.picked.size?(B.picked.size===list.length?" on":" some"):""}" data-a="pickall" role="checkbox" aria-checked="${B.picked.size&&B.picked.size===list.length?"true":B.picked.size?"mixed":"false"}" aria-label="Select all" title="${B.picked.size===list.length&&list.length?"Clear selection":"Select all "+list.length}" ${list.length?"":"disabled"}>${ic(B.picked.size&&B.picked.size<list.length?"minus":"check")}</button><select class="in qsel" id="mqsel" aria-label="Choose a list">${qopts}</select><label class="search">${ic("search")}<input id="mq" value="${esc(B.q)}" placeholder="Search this list" aria-label="Search this list"></label>
     ${S.accounts.length>1?`<select class="in macct" id="macct" style="width:auto;height:32px;padding:2px 8px;max-width:170px" aria-label="Mailbox"><option value="all">All mailboxes</option>${S.accounts.map(a=>`<option value="${a.id}" ${B.account===a.id?"selected":""}>${esc(a.email)}</option>`).join("")}</select>`:""}</div>
    ${f?`<div><button class="chip on" data-a="clearboxfilter">${esc(fl)} ${ic("x")}</button></div>`:""}
-  </div><div class="lb">${list.map(e=>rowHTML(e,{mail:true,sel:e.id===B.sel})).join("")||empty}</div></section>
+   ${B.picked.size?pickBarHTML(list):""}
+  </div><div class="lb${B.picked.size?" picking":""}">${list.map(e=>rowHTML(e,{mail:true,sel:e.id===B.sel})).join("")||empty}</div></section>
   <section class="read" aria-label="Message">${readPane}</section></div>`;
 }
+function pickBarHTML(list){
+ const ids=[...S.box.picked];const es=ids.map(byId).filter(Boolean);const open=es.filter(e=>OPEN(e)||e.status==="ready");const handled=es.filter(e=>HANDLED.includes(e.status)&&e.status!=="sent"&&e.status!=="delegated");const unread=es.filter(e=>e.unread);
+ return `<div class="pickbar" role="toolbar" aria-label="Selected emails"><span class="pk-n"><b class="num">${ids.length}</b> selected${ids.length<list.length?` · <button class="btn link sm" data-a="pickall" data-v="all">Select all ${list.length}</button>`:""}</span><span class="sp"></span>
+  ${unread.length?`<button class="btn sm" data-a="pickact" data-v="read" title="Mark as read">${ic("eye")}Read</button>`:""}
+  ${open.length?`<button class="btn sm" data-a="pickact" data-v="done" title="Mark done (archives them)">${ic("check")}Done</button><button class="btn sm" data-a="pickact" data-v="letgo" title="Archive, no reply needed">${ic("letgo")}Archive</button>${(S.set.buckets||[]).length?`<button class="btn sm" data-a="pickmove" title="Move to a bucket">${ic("move")}Move</button>`:""}<button class="btn sm danger" data-a="pickact" data-v="delete" title="Move to the Bin">${ic("trash")}Delete</button>`:""}
+  ${handled.length?`<button class="btn sm" data-a="pickact" data-v="reopen">${ic("back")}${handled.every(e=>e.status==="deleted")?"Restore":"Move back to inbox"}</button>`:""}
+  <button class="ib" data-a="pickclear" aria-label="Clear selection" title="Clear selection">${ic("x")}</button></div>`;
+}
+function popMoveMany(){return `<h3>Move ${S.box.picked.size} emails to</h3><div class="mvl">${[...(S.set.buckets||[]),OTHER].map(b=>`<button class="mvi" data-a="pickmoveto" data-v="${b.id}"><span class="ldot" style="background:${b.color||"#8e8e93"}"></span>${esc(b.name)}</button>`).join("")}</div>`;}
 function popWhy(e){
  const c=score(e),a=c.a,tot=c.s||1,open=OPEN(e);
  const bar=(l,v,col)=>`<div class="b"><span>${l}</span><span class="tr"><i style="width:${v*10}%;background:${col}"></i></span><span class="num">${v.toFixed(1)}</span></div>`;
@@ -1512,7 +1523,7 @@ function goQueue(k,start){closePop();S.bsheet=null;S.modal=null;renderModal();S.
 function setAgent(id,patch){const a=agentById(id);if(!a)return;Object.assign(a,patch);saveSet();}
 async function onClick(ev){
  const t=ev.target.closest("[data-a]");
- if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","sender","budget","delegate","why","movepop"].includes(t.dataset.a)))closePop();
+ if(!pop.hidden&&!ev.target.closest("#pop")&&!(t&&["queue","sender","budget","delegate","why","movepop","pickmove"].includes(t.dataset.a)))closePop();
  if(!t||t.disabled)return;const a=t.dataset.a,id=t.dataset.id,v=t.dataset.v;
  const one=async(op,param)=>{const en=await act([id],op,param);if(en)toast(en.text,en.undoable?en.id:null);};
  switch(a){
@@ -1535,6 +1546,22 @@ async function onClick(ev){
   case "q-letgo":case "s-letgo":if(a==="s-letgo"){S.sheet=null;}await one("letgo");break;
   case "q-pin":case "s-pin":await one("pin");break;
   case "q-delete":await one("delete");break;
+  case "rowpick":{ev.stopPropagation();const B=S.box;const ids=B.lastIds||[];
+   if(ev.shiftKey&&B.pickAnchor&&ids.includes(B.pickAnchor)){const [i,j]=[ids.indexOf(B.pickAnchor),ids.indexOf(id)].sort((x,y)=>x-y);const on=!B.picked.has(id);ids.slice(i,j+1).forEach(x=>on?B.picked.add(x):B.picked.delete(x));}
+   else B.picked.has(id)?B.picked.delete(id):B.picked.add(id);
+   B.pickAnchor=id;render();break;}
+  case "pickall":{const B=S.box;const ids=B.lastIds||[];B.picked=v==="all"||B.picked.size<ids.length?new Set(ids):new Set();render();break;}
+  case "pickclear":S.box.picked=new Set();render();break;
+  case "pickmove":ev.stopPropagation();openPop(t,popMoveMany(),"pkmv");break;
+  case "pickmoveto":{closePop();const ids=[...S.box.picked];const B=S.set.buckets||[];
+   ids.forEach(eid=>{const e=byId(eid);B.forEach(b=>{b.include=(b.include||[]).filter(x=>x!==eid);});if(v==="other")B.forEach(b=>{if(bFit(b,e))b.exclude=[...(b.exclude||[]).filter(x=>x!==eid),eid].slice(-500);});else{const b=B.find(x=>x.id===v);if(b){b.include=[...(b.include||[]),eid].slice(-500);b.exclude=(b.exclude||[]).filter(x=>x!==eid);}}});
+   saveSet();S.box.picked=new Set();render();toast(`Moved ${ids.length} email${ids.length>1?"s":""} to ${(bucketById(v)||OTHER).name}`);break;}
+  case "pickact":{const B=S.box;let ids=[...B.picked];const es=ids.map(byId).filter(Boolean);
+   if(v==="read"){const un=es.filter(e=>e.unread).map(e=>e.id);un.forEach(x=>{const e=byId(x);if(e){e.unread=false;S.readSent.add(x);}});B.picked=new Set();render();toast(`Marked ${un.length} as read`);if(live())act(un,"read");break;}
+   if(v==="reopen")ids=es.filter(e=>HANDLED.includes(e.status)&&e.status!=="sent"&&e.status!=="delegated").map(e=>e.id);
+   else ids=es.filter(e=>OPEN(e)||e.status==="ready").map(e=>e.id);
+   if(!ids.length)break;B.picked=new Set();
+   const en=await act(ids,v);if(en)toast(en.text,en.undoable?en.id:null);break;}
   case "movepop":ev.stopPropagation();{const e=byId(id);if(e)openPop(t,popMove(e),"mv"+id);}break;
   case "moveto":closePop();moveToBucket(id,v);break;
   case "stop":break;
@@ -1736,12 +1763,13 @@ document.addEventListener("change",ev=>{const t=ev.target;const id=t.dataset&&t.
  else if(t.name==="na-t"&&S.modal)S.modal.tpl=t.value;
 });
 document.addEventListener("keydown",ev=>{
- if(ev.key==="Escape"){if(!pop.hidden)closePop();else if(S.modal){S.modal=null;renderModal();}else if(S.sheet){S.sheet=null;renderSheet();}else if(S.bsheet){S.bsheet=null;render();}else if(S.route.view==="inbox"&&S.box.compose){S.box.compose=null;render();}}
+ if(ev.key==="Escape"){if(!pop.hidden)closePop();else if(S.modal){S.modal=null;renderModal();}else if(S.sheet){S.sheet=null;renderSheet();}else if(S.bsheet){S.bsheet=null;render();}else if(S.route.view==="inbox"&&S.box.picked&&S.box.picked.size&&!S.box.compose){S.box.picked=new Set();render();}else if(S.route.view==="inbox"&&S.box.compose){S.box.compose=null;render();}}
  if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("tk-row")){ev.preventDefault();ev.target.click();return;}
  if(ev.key==="Enter"&&ev.target.classList&&ev.target.classList.contains("row")){ev.preventDefault();ev.target.click();return;}
  const tg=ev.target;if(S.route.view!=="inbox"||S.modal||ev.metaKey||ev.ctrlKey||ev.altKey||(tg&&(tg.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))))return;
  const k=ev.key.toLowerCase();const btn=sel=>{const b=document.querySelector(sel);if(b&&!b.disabled){ev.preventDefault();b.click();}};
  if(k==="j")btn('.toolbar [data-a="qnav"][data-v="1"]');else if(k==="k")btn('.toolbar [data-a="qnav"][data-v="-1"]');
+ else if(k==="x"&&S.box.sel){ev.preventDefault();const B=S.box;B.picked.has(B.sel)?B.picked.delete(B.sel):B.picked.add(B.sel);render();}
  else if(k==="e")btn('.toolbar [data-a="q-done"]');else if(ev.key==="#"||k==="delete")btn('.toolbar [data-a="q-delete"]');else if(k==="r")btn('.toolbar [data-a="reply"]');
  if(!S.box.sel&&(k==="j"||k==="enter")){const f=document.querySelector('.qclear [data-a="selmail"]');if(f){ev.preventDefault();f.click();}}
 });

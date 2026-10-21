@@ -839,3 +839,26 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 .ust.newsletter,.ust.sales{color:var(--accent)}
 .ust.notification{color:var(--muted)}
 .lb .row .qa{display:none}
+/* inbox selection */
+.rsel{position:relative;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;padding:0}
+.rsel .av{transition:opacity .12s}
+.rck{position:absolute;inset:4px;border-radius:7px;box-shadow:inset 0 0 0 1.6px var(--faint);background:var(--surface);display:grid;place-items:center;color:#fff;opacity:0;transition:opacity .12s}
+.rck svg.i{width:15px;height:15px;stroke-width:2.6;opacity:0}
+.row:hover .rsel .rck,.lb.picking .rsel .rck,.rsel.on .rck,.rsel:focus-visible .rck{opacity:1}
+.row:hover .rsel .av,.lb.picking .rsel .av,.rsel.on .av{opacity:0}
+.rsel:hover .rck{box-shadow:inset 0 0 0 1.6px var(--accent)}
+.rsel.on .rck{background:var(--accent);box-shadow:none}
+.rsel.on .rck svg.i{opacity:1}
+.row.picked{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.row.picked.sel{background:var(--accent-soft)}
+.rsel-all{flex:none;width:22px;height:22px;border-radius:7px;box-shadow:inset 0 0 0 1.6px var(--faint);display:grid;place-items:center;color:#fff;background:var(--surface);margin:0 4px 0 6px}
+.rsel-all svg.i{width:14px;height:14px;stroke-width:2.6;opacity:0}
+.rsel-all:hover{box-shadow:inset 0 0 0 1.6px var(--accent)}
+.rsel-all.on,.rsel-all.some{background:var(--accent);box-shadow:none}
+.rsel-all.on svg.i,.rsel-all.some svg.i{opacity:1}
+.rsel-all:disabled{opacity:.4}
+.pickbar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:6px 6px 6px 10px;border-radius:10px;background:var(--accent-soft)}
+.pickbar .sp{flex:1}
+.pickbar .btn{background:var(--surface)}
+.pk-n{font-size:13px}
+.pk-n .btn{padding:0 2px;height:auto}
