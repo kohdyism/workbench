@@ -418,7 +418,7 @@ function render(){
  const r=S.route;
  const views={dashboard:vDashboard,buckets:vBuckets,inbox:vInbox,tasks:vTasks,agents:vAgents,priorities:vPriorities,activity:vActivity,accounts:vAccounts,connect:vConnect};
  const v=views[r.view]?r.view:"dashboard";
- const keep=captureFocus();
+ const keep=captureFocus();const snap=snapScroll();
  // Remember where things were, so redraws (marking read, a sync, the original arriving) don't move anything.
  const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;let anchor=null;
  if(lb){const top=lb.getBoundingClientRect().top;const a=[...lb.querySelectorAll(".row[data-id]")].find(x=>x.getBoundingClientRect().bottom>top+1);if(a)anchor={id:a.dataset.id,off:a.getBoundingClientRect().top-top};}
@@ -429,8 +429,26 @@ function render(){
   const a2=anchor&&lb2.querySelector(`.row[data-id="${CSS.escape(anchor.id)}"]`);if(a2)lb2.scrollTop+=(a2.getBoundingClientRect().top-lb2.getBoundingClientRect().top)-anchor.off;}
  const rd2=document.querySelector(".mail .read");if(rd2&&rdFor&&S.box.sel===rdFor)rd2.scrollTop=rdTop;
  const td2=document.querySelector("#today>.rows");if(td2)td2.scrollTop=tdTop;const apb2=document.querySelector("#approvals>.ap-body");if(apb2)apb2.scrollTop=apTop;
- restoreFocus(keep);afterRender(v);renderOverlays();
+ restoreFocus(keep);afterRender(v);renderOverlays();restoreScroll(snap);
 }
+/* ---- keeping scroll positions through redraws ----
+   Every change redraws the screen, which would reset every scrolling area. Before a redraw we note where each
+   scrolled area was (by its place in the page), and afterwards put it back. */
+const STATE_CLS=/^(on|open|sel|picked|busy|act|here|done|zero|mini|hot|acc|red|blue|some|picking|reading|fixed|tall)$/;
+function scrollPath(el){const steps=[];let n=el;
+ while(n&&n.parentElement){if(n.id&&n!==el){steps.unshift(["#"+n.id,0]);return steps;}if(n.id){steps.unshift(["#"+n.id,0]);return steps;}
+  const seg=n.tagName.toLowerCase()+[...n.classList].filter(c=>!STATE_CLS.test(c)).slice(0,3).map(c=>"."+CSS.escape(c)).join("");
+  const sib=[...n.parentElement.children].filter(c=>c.matches(seg));steps.unshift([seg,sib.indexOf(n)]);n=n.parentElement;}
+ return null;}
+function findPath(steps){if(!steps||!steps.length)return null;let cur;const [h]=steps;
+ if(h[0][0]==="#"){cur=document.getElementById(h[0].slice(1));steps=steps.slice(1);}else cur=document.documentElement;
+ for(const [seg,i] of steps){if(!cur)return null;const c=[...cur.children].filter(x=>x.matches(seg));cur=c[i]||null;}return cur;}
+const SKIP_SCROLL=el=>el.matches(".mail .lb,.mail .read,#today>.rows,#approvals>.ap-body,.bsheet .sh-body,.sheet .sh-body");
+function snapScroll(){const out=[];for(const root of [document.getElementById("app"),document.getElementById("overlay")]){if(!root)continue;
+ root.querySelectorAll("*").forEach(el=>{if((el.scrollTop>0||el.scrollLeft>0)&&!SKIP_SCROLL(el)){const p=scrollPath(el);if(p)out.push([p,el.scrollTop,el.scrollLeft]);}});}
+ return {list:out,y:window.scrollY,key:location.hash};}
+function restoreScroll(sn){if(!sn)return;for(const [p,t,l] of sn.list){const el=findPath(p);if(el){el.scrollTop=t;el.scrollLeft=l;}}
+ if(sn.key===location.hash&&Math.abs(window.scrollY-sn.y)>1)window.scrollTo(0,sn.y);}
 function renderChrome(){const el=document.getElementById("topstatus");if(el)el.innerHTML=statusHTML();}
 const statusHTML=()=>S.syncing?`<span class="status" role="status"><span class="spin"></span>${esc(S.syncNote)}</span>`:"";
 function captureFocus(){const a=document.activeElement;if(!a||!a.id)return null;return {id:a.id,s:a.selectionStart,e:a.selectionEnd};}
@@ -1416,7 +1434,8 @@ function renderSheet(){
  const nb=o.querySelector(".sh-body");if(nb)nb.scrollTop=top;
 }
 function renderModal(){setTimeout(unsubUI,0);
- const o=document.getElementById("overlay");const keep=captureFocus();o.querySelectorAll(".modal,.scrim.m").forEach(x=>x.remove());
+ const o=document.getElementById("overlay");const keep=captureFocus();const mScroll=[...o.querySelectorAll(".modal *")].filter(x=>x.scrollTop>0).map(x=>[scrollPath(x),x.scrollTop]);o.querySelectorAll(".modal,.scrim.m").forEach(x=>x.remove());
+ setTimeout(()=>mScroll.forEach(([p,t])=>{const el=findPath(p);if(el)el.scrollTop=t;}),0);
  const M=S.modal;if(!M)return;let h="",title="",foot="",wide=false;
  if(M.t==="compose"){title="New email";wide=true;
   const accs=S.accounts;h=`<div class="form">
