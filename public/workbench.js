@@ -423,12 +423,12 @@ function render(){
  const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;let anchor=null;
  if(lb){const top=lb.getBoundingClientRect().top;const a=[...lb.querySelectorAll(".row[data-id]")].find(x=>x.getBoundingClientRect().bottom>top+1);if(a)anchor={id:a.dataset.id,off:a.getBoundingClientRect().top-top};}
  const rd=document.querySelector(".mail .read");const rdTop=rd?rd.scrollTop:0;const rdFor=S.box.sel;
- const td=document.querySelector("#today>.rows");const tdTop=td?td.scrollTop:0;
+ const td=document.querySelector("#today>.rows");const tdTop=td?td.scrollTop:0;const apb=document.querySelector("#approvals>.ap-body");const apTop=apb?apb.scrollTop:0;
  app().innerHTML=`<div class="shell${v==="inbox"?" fixed":""}">${navHTML(v)}<div class="content">${views[v]()}</div></div>`;
  const lb2=document.querySelector(".mail .lb");if(lb2){lb2.scrollTop=lbTop;
   const a2=anchor&&lb2.querySelector(`.row[data-id="${CSS.escape(anchor.id)}"]`);if(a2)lb2.scrollTop+=(a2.getBoundingClientRect().top-lb2.getBoundingClientRect().top)-anchor.off;}
  const rd2=document.querySelector(".mail .read");if(rd2&&rdFor&&S.box.sel===rdFor)rd2.scrollTop=rdTop;
- const td2=document.querySelector("#today>.rows");if(td2)td2.scrollTop=tdTop;
+ const td2=document.querySelector("#today>.rows");if(td2)td2.scrollTop=tdTop;const apb2=document.querySelector("#approvals>.ap-body");if(apb2)apb2.scrollTop=apTop;
  restoreFocus(keep);afterRender(v);renderOverlays();
 }
 function renderChrome(){const el=document.getElementById("topstatus");if(el)el.innerHTML=statusHTML();}
@@ -1013,12 +1013,12 @@ function approvalsCard(){
  const items=queueItems();const sugg=taskSuggestions();const ready=compute().ready;const total=items.length+sugg.length+ready.length;
  const head=`<div class="card-h"><h3><span class="ldot" style="background:var(--accent)"></span>Needs your OK <span class="num faint">${total}</span></h3><span class="sp">${total?`<button class="btn sm" data-a="goq" data-v="approval" data-start="1" title="Open each email with its suggestion, one at a time">One by one</button>`:""}${items.length>1?`<button class="btn sm pri" data-a="approveall" title="Approve every agent suggestion">Approve all agent actions</button>`:""}</span></div>`;
  if(!total)return `<section class="card" id="approvals">${head}${emptyState("check","No approvals needed, yay!","Agent actions, suggested tasks and drafts ready to send wait here for your OK.")}</section>`;
- const lim=S.showAllApprovals?99:3;
- return `<section class="card" id="approvals">${head}
+ const lim=999;
+ return `<section class="card" id="approvals">${head}<div class="ap-body">
   ${items.length?`<div class="aps-h">${ic("bot")}Agent actions <span class="num faint">${items.length}</span></div><div class="apl">${items.slice(0,lim).map(({q,e,a})=>apItemHTML(q,e,a,false)).join("")}</div>`:""}
   ${sugg.length?`<div class="aps-h">${ic("spark")}Suggested tasks <span class="num faint">${sugg.length}</span><span class="note" style="margin-left:auto">Added only when you approve</span></div><div class="tkl">${sugg.slice(0,lim).map(s=>suggestionHTML(s)).join("")}</div>`:""}
   ${ready.length?`<div class="aps-h">${ic("send")}Drafts ready to send <span class="num faint">${ready.length}</span><span class="note" style="margin-left:auto">Saved in your mailbox</span></div><div class="rows">${ready.slice(0,lim).map(e=>rowHTML(e,{q:"approval"})).join("")}</div>`:""}
-  ${items.length>lim||sugg.length>lim||ready.length>lim?`<button class="more" data-a="moreapprovals">${S.showAllApprovals?"Show fewer":"Show all"}</button>`:""}</section>`;
+  </div></section>`;
 }
 function tasksCard(){
  const list=S.tasks.filter(kept).sort(taskOrder);const open=list.filter(isActive);const doneN=list.length-open.length;

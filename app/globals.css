@@ -863,6 +863,13 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 .pk-n{font-size:13px}
 .pk-n .btn{padding:0 2px;height:auto}
 /* dashboard: Do today keeps a fixed height and scrolls inside */
-#today>.rows{max-height:min(460px,55vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+#today>.rows{height:var(--dh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 #today>.rows{box-shadow:inset 0 -12px 12px -12px rgba(0,0,0,.08)}
-#today>.es{min-height:200px}
+#today>.es{height:var(--dh);box-sizing:border-box;display:grid;place-content:center}
+/* dashboard: Needs your OK matches Do today's height and scrolls inside */
+#approvals>.ap-body{height:calc(var(--dh) + var(--lf));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;box-shadow:inset 0 -12px 12px -12px rgba(0,0,0,.08)}
+#approvals>.ap-body>.aps-h:first-child{border-top:0}
+#approvals .aps-h{position:sticky;top:0;z-index:1;background:var(--surface)}
+
+.page.dash{--dh:min(440px,52vh);--lf:51px}
+#approvals>.es{height:calc(var(--dh) + var(--lf));box-sizing:border-box;display:grid;place-content:center}
