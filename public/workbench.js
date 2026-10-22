@@ -423,10 +423,12 @@ function render(){
  const lb=document.querySelector(".mail .lb");const lbTop=lb?lb.scrollTop:0;let anchor=null;
  if(lb){const top=lb.getBoundingClientRect().top;const a=[...lb.querySelectorAll(".row[data-id]")].find(x=>x.getBoundingClientRect().bottom>top+1);if(a)anchor={id:a.dataset.id,off:a.getBoundingClientRect().top-top};}
  const rd=document.querySelector(".mail .read");const rdTop=rd?rd.scrollTop:0;const rdFor=S.box.sel;
+ const td=document.querySelector("#today>.rows");const tdTop=td?td.scrollTop:0;
  app().innerHTML=`<div class="shell${v==="inbox"?" fixed":""}">${navHTML(v)}<div class="content">${views[v]()}</div></div>`;
  const lb2=document.querySelector(".mail .lb");if(lb2){lb2.scrollTop=lbTop;
   const a2=anchor&&lb2.querySelector(`.row[data-id="${CSS.escape(anchor.id)}"]`);if(a2)lb2.scrollTop+=(a2.getBoundingClientRect().top-lb2.getBoundingClientRect().top)-anchor.off;}
  const rd2=document.querySelector(".mail .read");if(rd2&&rdFor&&S.box.sel===rdFor)rd2.scrollTop=rdTop;
+ const td2=document.querySelector("#today>.rows");if(td2)td2.scrollTop=tdTop;
  restoreFocus(keep);afterRender(v);renderOverlays();
 }
 function renderChrome(){const el=document.getElementById("topstatus");if(el)el.innerHTML=statusHTML();}

@@ -862,3 +862,7 @@ button.wp:hover{box-shadow:0 0 0 1px var(--faint)}
 .pickbar .btn{background:var(--surface)}
 .pk-n{font-size:13px}
 .pk-n .btn{padding:0 2px;height:auto}
+/* dashboard: Do today keeps a fixed height and scrolls inside */
+#today>.rows{max-height:min(460px,55vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+#today>.rows{box-shadow:inset 0 -12px 12px -12px rgba(0,0,0,.08)}
+#today>.es{min-height:200px}
